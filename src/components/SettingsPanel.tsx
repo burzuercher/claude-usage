@@ -83,10 +83,16 @@ export function SettingsPanel({
                 onClick={() => onChange("env", e.id)}
               >
                 <span className="sp-env-main">
-                  <span className="sp-env-name">{e.label}</span>
+                  <span className="sp-env-name">
+                    {e.label}
+                    {/* Dir-id slug — makes envs distinguishable even when org names collide. */}
+                    {!e.custom && <span className="sp-env-slug">{e.id}</span>}
+                  </span>
                   <span className="sp-env-meta">
                     {e.account.email || e.id}
+                    {e.account.seatTier ? ` · ${e.account.seatTier}` : ""}
                     {e.custom ? " · custom" : ""}
+                    {e.id === ".claude" && <span className="sp-env-active" title="Claude Code's currently active login — switching accounts in the CLI changes what this shows.">Claude Code active</span>}
                   </span>
                 </span>
                 {e.account.detectedPlan && (

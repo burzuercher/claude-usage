@@ -1,0 +1,39 @@
+# Linux release build environment for the Claude Usage Tauri widget.
+#
+# Usage (from the project root):
+#   docker build -t claude-usage-linux-build -f Dockerfile.linux-build .
+#   docker run --rm -v "$PWD:/work" claude-usage-linux-build
+#
+# Artifacts land under src-tauri/target-linux/release/bundle/ on the host
+# (kept separate from the Windows target/ dir so the two builds don't conflict).
+
+FROM rust:1-bookworm
+
+# Tauri v2 Linux deps (webkit2gtk 4.1, gtk3, appindicator, rsvg, xdo, ssl, build basics).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libwebkit2gtk-4.1-dev \
+      libgtk-3-dev \
+      libayatana-appindicator3-dev \
+      librsvg2-dev \
+      libxdo-dev \
+      libssl-dev \
+      pkg-config \
+      build-essential \
+      curl wget file ca-certificates \
+      patchelf \
+      libfuse2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 22 (matches the local dev toolchain).
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+
+# Build script: runs npm install + tauri build with a Linux-only target dir.
+# Always overwrites any host node_modules (which may contain Windows binaries).
+RUN printf '#!/bin/sh\nset -eu\necho "[linux-build] node $(node -v) | rust $(rustc --version)"\necho "[linux-build] cleaning Windows node_modules if present..."\nrm -rf node_modules\nnpm install --no-audit --no-fund\nexport CARGO_TARGET_DIR=/work/src-tauri/target-linux\necho "[linux-build] running tauri build..."\nnpm run tauri build -- --verbose\necho "[linux-build] artifacts:"\nls -lh src-tauri/target-linux/release/bundle/*/* 2>/dev/null || true\nls -lh src-tauri/target-linux/release/claude-usage 2>/dev/null || true\n' > /usr/local/bin/build.sh \
+    && chmod +x /usr/local/bin/build.sh
+
+CMD ["build.sh"]

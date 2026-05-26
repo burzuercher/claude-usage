@@ -74,6 +74,24 @@ npm run tauri build    # produces an installer / executable under src-tauri/targ
 Outputs (Windows): `src-tauri/target/release/claude-usage.exe` (~10 MB) plus an `.msi` and an
 NSIS `-setup.exe` under `src-tauri/target/release/bundle/`.
 
+### Linux build (from a Windows host, via Docker)
+
+A `Dockerfile.linux-build` ships a `rust:1-bookworm` image with Tauri's Linux deps (webkit2gtk 4.1,
+gtk3, ayatana-appindicator, rsvg, xdo, ssl, build-essential, Node 22). It bind-mounts the project and
+writes Linux artifacts to a separate `src-tauri/target-linux/` so it never conflicts with the Windows
+`target/`.
+
+```bash
+docker build -t claude-usage-linux-build -f Dockerfile.linux-build .
+docker run --rm -v "$PWD:/work" claude-usage-linux-build
+```
+
+Outputs under `src-tauri/target-linux/release/`:
+- `claude-usage` (standalone binary, ~9 MB)
+- `bundle/deb/Claude Usage_0.1.0_amd64.deb` (~3.5 MB)
+- `bundle/rpm/Claude Usage-0.1.0-1.x86_64.rpm` (~3.5 MB)
+- `bundle/appimage/Claude Usage_0.1.0_amd64.AppImage` (~94 MB — bundles the WebKit runtime)
+
 ## Test
 
 ```bash

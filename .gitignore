@@ -8,8 +8,13 @@ vite.config.ts.timestamp-*
 
 # ─── Rust / Tauri backend ───────────────────────────────────────────────
 src-tauri/target/
-src-tauri/gen/
+# Linux build output (Docker-driven, see Dockerfile.linux-build).
+src-tauri/target-linux/
 # Tauri auto-generates capability schemas under gen/; keep hand-written ones.
+src-tauri/gen/
+
+# Claude Code session metadata.
+.claude/
 
 # ─── Logs & debug ───────────────────────────────────────────────────────
 *.log

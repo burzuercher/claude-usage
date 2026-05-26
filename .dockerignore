@@ -1,0 +1,9 @@
+# Build context is only used to ship the Dockerfile (project is bind-mounted
+# at runtime); excluding heavy dirs makes `docker build` near-instant.
+node_modules
+dist
+src-tauri/target
+src-tauri/target-linux
+src-tauri/gen
+.git
+*.log

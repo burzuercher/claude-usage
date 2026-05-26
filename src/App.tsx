@@ -86,6 +86,8 @@ export default function App() {
         showSpend={settings.showSpend}
         account={account}
         envLabel={selectedEnv?.label ?? ""}
+        envId={selectedEnvId}
+        envCount={visibleEnvs.length}
         onOpenSettings={() => setSettingsOpen(true)}
         onRefresh={() => {
           refresh();

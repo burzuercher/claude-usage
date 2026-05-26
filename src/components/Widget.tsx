@@ -32,6 +32,8 @@ export function Widget({
   showSpend,
   account,
   envLabel,
+  envId,
+  envCount,
   onOpenSettings,
   onRefresh,
 }: {
@@ -43,6 +45,8 @@ export function Widget({
   showSpend: boolean;
   account?: Account;
   envLabel: string;
+  envId: string;
+  envCount: number;
   onOpenSettings: () => void;
   onRefresh: () => void;
 }) {
@@ -184,8 +188,11 @@ export function Widget({
               {data.isMock && <span className="mock-badge">demo</span>}
               {live && <span className="live-badge"><span className="live-dot" />live</span>}
             </b>
-            <span className="title-sub" title={`synced ${syncedAgo}s ago`}>
+            <span className="title-sub" title={`${envId || "local"} · synced ${syncedAgo}s ago`}>
               {(account?.orgName || account?.email || envLabel || "Local logs")} · {plan.name}
+              {/* Show dir-id when multiple envs exist so the user knows which one is selected,
+                  especially because .claude is Claude Code's currently active login (volatile). */}
+              {envCount > 1 && envId && <span className="title-env"> · {envId}</span>}
             </span>
           </div>
         </div>
