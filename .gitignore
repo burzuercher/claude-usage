@@ -1,0 +1,39 @@
+# ─── Node / Vite frontend ───────────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+vite.config.ts.timestamp-*
+
+# ─── Rust / Tauri backend ───────────────────────────────────────────────
+src-tauri/target/
+src-tauri/gen/
+# Tauri auto-generates capability schemas under gen/; keep hand-written ones.
+
+# ─── Logs & debug ───────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── Editors / IDEs ─────────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── OS cruft ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Misc ───────────────────────────────────────────────────────────────
+# Source icon is kept in-repo (app-icon.png); generated icon set lives in
+# src-tauri/icons and is committed.
+.preview-*.png
+*.tmp
