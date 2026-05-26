@@ -1,25 +1,23 @@
 import { useCountUp } from "../../hooks/useCountUp";
 import { Icon } from "../Icon";
-import { fmtNum } from "../../lib/format";
 import type { Economics, PlanDef } from "../../lib/plans";
 import { isSeatPriced } from "../../lib/plans";
-import type { ExtraUsage, Month } from "../../lib/types";
+import type { ExtraUsage } from "../../lib/types";
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
 export function SpendTab({
   plan,
   econ,
-  month,
   extra,
 }: {
   plan: PlanDef;
   econ: Economics;
-  month: Month;
   extra: ExtraUsage | null;
 }) {
   const totalAnim = useCountUp(econ.total, 800);
   const overBudget = econ.extraUsage > 0;
+  const haveLiveExtra = extra !== null;
 
   return (
     <div className="spend">
@@ -53,10 +51,14 @@ export function SpendTab({
             <span className="spend-row-lbl">
               Extra usage{" "}
               <span className="spend-row-sub">
-                · {extra ? (extra.isEnabled ? "enabled" : "not enabled") : "overage at API rates"}
+                {haveLiveExtra
+                  ? extra!.isEnabled ? "· live · enabled" : "· live · not enabled"
+                  : "· live unavailable"}
               </span>
             </span>
-            <span className={`spend-row-val mono ${overBudget ? "hot" : ""}`}>{usd(econ.extraUsage)}</span>
+            <span className={`spend-row-val mono ${overBudget ? "hot" : ""}`}>
+              {haveLiveExtra ? usd(econ.extraUsage) : "—"}
+            </span>
           </div>
           {extra && extra.monthlyLimit > 0 && (
             <div className="spend-row">
@@ -73,43 +75,13 @@ export function SpendTab({
         </div>
       </div>
 
-      {/* Monthly allowance bar */}
-      <div className="block">
-        <div className="block-head">
-          <span className="block-title">Monthly allowance · this seat</span>
-          <span className="block-meta mono">{Math.round(econ.budgetUsed * 100)}%</span>
-        </div>
-        <div className="bar">
-          <div
-            className={`bar-fill ${overBudget ? "" : "clay"}`}
-            style={{
-              width: `${Math.min(100, econ.budgetUsed * 100)}%`,
-              background: overBudget ? "linear-gradient(90deg, var(--ember), var(--clay-2))" : undefined,
-            }}
-          />
-        </div>
-        <div className="weekly-foot">
-          <span>
-            {fmtNum(month.prompts)} of ~{fmtNum(Math.round(econ.monthPromptBudget))} included prompts
-          </span>
-          <span className="mono">{overBudget ? "over — billing extra" : "within plan"}</span>
-        </div>
-      </div>
-
-      {/* Reference */}
+      {/* API-rate reference (factual, computed from local tokens × Anthropic rates) */}
       <div className="tip">
         <Icon name="spark" size={12} />
-        {extra ? (
-          <span>
-            Extra usage is <b>live from Claude</b>. This month's usage is worth <b>{usd(econ.apiValue)}</b>{" "}
-            at pure API rates.
-          </span>
-        ) : (
-          <span>
-            This month's usage is worth <b>{usd(econ.apiValue)}</b> at pure API rates. Extra usage is
-            estimated — actual overage bills only if enabled on your account.
-          </span>
-        )}
+        <span>
+          This month's tracked usage is worth <b>{usd(econ.apiValue)}</b> at pure API rates
+          {haveLiveExtra ? <> · extra-usage is live from Claude</> : null}.
+        </span>
       </div>
     </div>
   );

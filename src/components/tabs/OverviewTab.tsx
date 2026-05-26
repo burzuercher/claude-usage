@@ -9,17 +9,20 @@ import type { Economics } from "../../lib/plans";
 export interface WeeklyRow {
   label: string;
   util: number; // 0..1
-  foot: string; // right-aligned note (reset time / "trailing 7 days")
+  foot: string; // right-aligned note (reset time)
 }
 
 export interface OverviewProps {
-  sessionUsed: number; // 0..1
+  /** Real session utilization (0..1) from /api/oauth/usage, undefined when unavailable. */
+  sessionUsed: number | undefined;
   resetIn: string;
-  live: boolean; // real API data vs local estimate
-  weeklyRows: WeeklyRow[];
-  forecastLabel: string;
+  /** True when /api/oauth/usage has produced a session result for this env. */
+  live: boolean;
+  /** Reason live is unavailable (from the backend), shown in the empty state. */
+  unavailableReason?: string;
+  weeklyRows: WeeklyRow[]; // empty when no live data
+  forecastLabel?: string;
   willBust: boolean;
-  promptsLeft: number;
   models: ModelStat[];
   burn: number[];
   econ: Economics;
@@ -67,30 +70,41 @@ export function OverviewTab(p: OverviewProps) {
 
   return (
     <>
-      <Ring value={p.sessionUsed} resetIn={p.resetIn} />
+      {/* Live-only: ring, forecast, weekly limits. Hidden with an honest empty
+          state when /api/oauth/usage hasn't produced data for this env. */}
+      {p.live && p.sessionUsed !== undefined ? (
+        <>
+          <Ring value={p.sessionUsed} resetIn={p.resetIn} />
 
-      {/* Forecast pill (burn-based, from local logs) */}
-      <div className={`forecast ${p.willBust ? "warn" : ""}`}>
-        <Icon name="spark" size={13} />
-        <span>
-          At this pace, you'll <b>{p.willBust ? "hit the cap" : "finish under cap"}</b> in{" "}
-          <b className="mono">{p.forecastLabel}</b>
-        </span>
-      </div>
-
-      {/* Weekly limits — real categories when live, else estimated */}
-      <div className="weekly">
-        <WeeklyBars rows={p.weeklyRows} ink />
-        <div className="weekly-src">
-          {p.live ? (
-            <><span className="live-dot" /> live from Claude · limits</>
-          ) : (
-            <>estimated from local logs · set plan in settings</>
+          {p.forecastLabel && (
+            <div className={`forecast ${p.willBust ? "warn" : ""}`}>
+              <Icon name="spark" size={13} />
+              <span>
+                At this pace, you'll <b>{p.willBust ? "hit the cap" : "finish under cap"}</b> in{" "}
+                <b className="mono">{p.forecastLabel}</b>
+              </span>
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* Expenditure mini card (hidden unless enabled in settings) */}
+          {p.weeklyRows.length > 0 && (
+            <div className="weekly">
+              <WeeklyBars rows={p.weeklyRows} ink />
+              <div className="weekly-src">
+                <span className="live-dot" /> live from Claude · limits
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="empty-hint">
+          Live usage limits aren't available for this account
+          {p.unavailableReason ? <> ({p.unavailableReason})</> : null}.
+          <br />
+          Sign in to this account in Claude Code to enable live limits.
+        </div>
+      )}
+
+      {/* Expenditure mini card — surface only when enabled in settings */}
       {p.showSpend && (
         <div className="block spend-mini">
           <div className="block-head">
@@ -114,11 +128,10 @@ export function OverviewTab(p: OverviewProps) {
         </div>
       )}
 
-      {/* Model split mini (from local logs) */}
+      {/* Local-source factual data (not estimates) */}
       <div className="block">
         <div className="block-head">
           <span className="block-title">This session · models</span>
-          <span className="block-meta mono">{p.promptsLeft} left</span>
         </div>
         <StackedBar segments={segments} height={8} />
         <div className="legend">
@@ -135,7 +148,6 @@ export function OverviewTab(p: OverviewProps) {
         </div>
       </div>
 
-      {/* Burn rate spark (from local logs) */}
       <div className="block">
         <div className="block-head">
           <span className="block-title">Burn rate · last 5h</span>

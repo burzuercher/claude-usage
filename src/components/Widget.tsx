@@ -6,7 +6,7 @@ import { ModelsTab } from "./tabs/ModelsTab";
 import { SurfacesTab } from "./tabs/SurfacesTab";
 import { SpendTab } from "./tabs/SpendTab";
 import { HistoryTab } from "./tabs/HistoryTab";
-import { fmtTokens, fmtDuration, fmtForecast, fmtResetRelative, fmtResetAbsolute, clamp01 } from "../lib/format";
+import { fmtTokens, fmtForecast, fmtResetRelative, fmtResetAbsolute } from "../lib/format";
 import type { Account, RealUsage, UsageData } from "../lib/types";
 import type { WeeklyRow } from "./tabs/OverviewTab";
 import { computeEconomics, type PlanDef } from "../lib/plans";
@@ -89,77 +89,42 @@ export function Widget({
     };
   }, []);
 
-  // ── Local-log estimates ──
-  const localSessionUsed = clamp01(data.session.prompts / plan.sessionBudget);
-  const weeklyUsed = clamp01(data.weekly.prompts / plan.weeklyBudget);
-  const opusUsed = clamp01(data.weekly.opusPrompts / plan.weeklyOpusBudget);
-
-  const sessionEndsAt = data.session.startedAt + 5 * 3600 * 1000;
-  const resetMs = sessionEndsAt - now;
-
-  // ── Authoritative limits from Anthropic when available ──
+  // ── Real-only derivations: ring/weekly/forecast come from /api/oauth/usage,
+  //    or are hidden when no live data is available for this env. ──
   const live = real.found && !!real.session;
-  const sessionUsed = live ? real.session!.utilization : localSessionUsed;
-  const resetIn = live
-    ? fmtResetRelative(real.session!.resetsAt, now) || fmtDuration(resetMs)
-    : fmtDuration(resetMs);
+  const sessionUsed = live ? real.session!.utilization : undefined;
+  const resetIn = live ? fmtResetRelative(real.session!.resetsAt, now) : "";
 
-  const weeklyRows: WeeklyRow[] =
-    real.found && real.weekly.length
-      ? real.weekly.map((b) => ({
-          label: b.label,
-          util: b.utilization,
-          foot: b.resetsAt ? `resets ${fmtResetAbsolute(b.resetsAt)}` : "",
-        }))
-      : [
-          { label: "Weekly · all models", util: weeklyUsed, foot: "trailing 7 days" },
-          { label: "Weekly · Opus only", util: opusUsed, foot: "trailing 7 days" },
-        ];
+  const weeklyRows: WeeklyRow[] = real.found
+    ? real.weekly.map((b) => ({
+        label: b.label,
+        util: b.utilization,
+        foot: b.resetsAt ? `resets ${fmtResetAbsolute(b.resetsAt)}` : "",
+      }))
+    : [];
 
-  const last4 = data.burn.slice(-4).reduce((a, b) => a + b, 0); // last hour
-  const promptsLeft = Math.max(0, plan.sessionBudget - data.session.prompts);
-  const burnPerMin = last4 / 60;
-
-  // Forecast: prefer a live projection off the real session utilization.
-  let forecastMin: number;
-  let willBust: boolean;
+  // Forecast: only when we have a live session utilization to project from.
+  let forecastLabel: string | undefined;
+  let willBust = false;
   if (live && real.session!.resetsAt) {
     const resetT = Date.parse(real.session!.resetsAt);
     const sessionStart = resetT - 5 * 3600 * 1000;
     const elapsed = Math.max(60_000, now - sessionStart);
     const u = real.session!.utilization;
     if (u >= 1) {
-      forecastMin = 0;
+      forecastLabel = fmtForecast(0);
       willBust = true;
-    } else if (u <= 0) {
-      forecastMin = 999;
-      willBust = false;
-    } else {
+    } else if (u > 0) {
       const msToFull = (elapsed * (1 - u)) / u;
-      forecastMin = Math.round(msToFull / 60000);
+      forecastLabel = fmtForecast(msToFull / 60000);
       willBust = msToFull < resetT - now;
     }
-  } else {
-    forecastMin = burnPerMin > 0 ? Math.round(promptsLeft / burnPerMin) : 999;
-    willBust = forecastMin < resetMs / 60000;
+    // u <= 0 → no forecast (no burn to project from yet)
   }
 
-  // Economics: override the estimate with authoritative extra-usage when present.
-  let econ = computeEconomics(plan, seats, data.month, now);
-  if (real.extra) {
-    const extraUsage = real.extra.usedCredits;
-    const d = new Date(now);
-    const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    const elapsedDays = Math.max(0.5, (now - data.month.startedAt) / 86_400_000);
-    const projectedExtra = (extraUsage / elapsedDays) * daysInMonth;
-    econ = {
-      ...econ,
-      extraUsage,
-      total: econ.base + extraUsage,
-      projectedExtra,
-      projectedTotal: econ.base + projectedExtra,
-    };
-  }
+  // Economics: real-data-driven. extraUsage comes from real.extra.usedCredits
+  // when available; the helper returns 0 / no projection otherwise (no estimate).
+  const econ = computeEconomics(plan, seats, data.month, now, real.extra?.usedCredits);
   const syncedAgo = Math.max(0, Math.floor((now - data.generatedAt) / 1000));
 
   const togglePin = async () => {
@@ -234,10 +199,10 @@ export function Widget({
             sessionUsed={sessionUsed}
             resetIn={resetIn}
             live={live}
+            unavailableReason={real.reason}
             weeklyRows={weeklyRows}
-            forecastLabel={fmtForecast(forecastMin)}
+            forecastLabel={forecastLabel}
             willBust={willBust}
-            promptsLeft={promptsLeft}
             models={data.models}
             burn={data.burn}
             econ={econ}
@@ -246,7 +211,7 @@ export function Widget({
         )}
         {activeTab === "models" && <ModelsTab models={data.models} />}
         {activeTab === "surfaces" && <SurfacesTab surfaces={data.surfaces} daily={data.daily} />}
-        {activeTab === "spend" && <SpendTab plan={plan} econ={econ} month={data.month} extra={real.extra} />}
+        {activeTab === "spend" && <SpendTab plan={plan} econ={econ} extra={real.extra} />}
         {activeTab === "history" && <HistoryTab recent={data.recent} heatmap={data.heatmap} />}
       </div>
 

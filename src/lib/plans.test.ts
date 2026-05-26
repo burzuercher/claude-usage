@@ -5,11 +5,11 @@ import type { Month } from "./types";
 const NOW = Date.UTC(2026, 4, 21); // May 21 2026
 const monthStart = Date.UTC(2026, 4, 1); // May 1 2026
 
-const month = (prompts: number, cost: number): Month => ({
+const month = (cost: number): Month => ({
   startedAt: monthStart,
   tokens: 0,
   cost,
-  prompts,
+  prompts: 0,
 });
 
 describe("isSeatPriced", () => {
@@ -21,43 +21,43 @@ describe("isSeatPriced", () => {
 });
 
 describe("computeEconomics — flat plans", () => {
-  it("uses the flat monthly base and no overage under budget", () => {
-    const e = computeEconomics(PLANS.pro, 1, month(1000, 50), NOW);
+  it("returns the subscription base and zero extra when no live data", () => {
+    const e = computeEconomics(PLANS.pro, 1, month(50), NOW);
     expect(e.base).toBe(20);
     expect(e.extraUsage).toBe(0);
     expect(e.total).toBe(20);
-    expect(e.apiValue).toBe(50);
-    expect(e.budgetUsed).toBeGreaterThan(0);
-    expect(e.budgetUsed).toBeLessThan(1);
+    expect(e.projectedExtra).toBe(0);
+    expect(e.projectedTotal).toBe(20);
+    expect(e.apiValue).toBe(50); // local API-rate value, informational
   });
 
-  it("bills overage past the monthly allowance at API rates", () => {
-    const e = computeEconomics(PLANS.pro, 1, month(4000, 100), NOW);
-    // monthly budget ≈ 480 * 365.25/12/7 ≈ 2087 prompts
-    expect(e.monthPromptBudget).toBeCloseTo(2087.1, 0);
-    expect(e.extraUsage).toBeGreaterThan(40);
-    expect(e.extraUsage).toBeLessThan(55);
-    expect(e.total).toBeCloseTo(e.base + e.extraUsage, 5);
-    expect(e.budgetUsed).toBe(1); // clamped
+  it("uses the real extra-usage value when supplied", () => {
+    const e = computeEconomics(PLANS.max5, 1, month(100), NOW, 42.5);
+    expect(e.base).toBe(100);
+    expect(e.extraUsage).toBe(42.5);
+    expect(e.total).toBeCloseTo(142.5, 5);
   });
 
-  it("projects month-end above current when over budget", () => {
-    const e = computeEconomics(PLANS.pro, 1, month(4000, 100), NOW);
-    expect(e.projectedExtra).toBeGreaterThan(e.extraUsage);
-    expect(e.projectedTotal).toBeGreaterThan(e.total);
+  it("projects month-end from real extra-usage (linear from elapsed days)", () => {
+    const e = computeEconomics(PLANS.max5, 1, month(100), NOW, 50);
+    // ~21 of 31 days elapsed → projection ~50 * 31/21 ≈ 73.8
+    expect(e.projectedExtra).toBeGreaterThan(70);
+    expect(e.projectedExtra).toBeLessThan(78);
+    expect(e.projectedTotal).toBeCloseTo(e.base + e.projectedExtra, 5);
   });
 });
 
 describe("computeEconomics — Team (seat-aware)", () => {
   it("clamps to the minimum seat count and prices per seat", () => {
-    const e = computeEconomics(PLANS.team, 3, month(1000, 40), NOW);
+    const e = computeEconomics(PLANS.team, 3, month(40), NOW);
     expect(e.seats).toBe(5); // min 5
     expect(e.base).toBe(150); // 5 × $30
   });
 
   it("scales the base with seat count", () => {
-    const e = computeEconomics(PLANS.team, 12, month(1000, 40), NOW);
+    const e = computeEconomics(PLANS.team, 12, month(40), NOW, 0);
     expect(e.seats).toBe(12);
     expect(e.base).toBe(360); // 12 × $30
+    expect(e.extraUsage).toBe(0); // real extraUsage of 0 → no estimate
   });
 });
