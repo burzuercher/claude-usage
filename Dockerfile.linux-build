@@ -2,10 +2,15 @@
 #
 # Usage (from the project root):
 #   docker build -t claude-usage-linux-build -f Dockerfile.linux-build .
-#   docker run --rm -v "$PWD:/work" claude-usage-linux-build
+#   docker run --rm \
+#     -v "$PWD:/work" \
+#     -v claude-usage-node-modules:/work/node_modules \
+#     claude-usage-linux-build
 #
-# Artifacts land under src-tauri/target-linux/release/bundle/ on the host
-# (kept separate from the Windows target/ dir so the two builds don't conflict).
+# The named volume for node_modules shadows the bind-mounted one so Linux
+# binaries don't overwrite the host's Windows shims. Artifacts land under
+# src-tauri/target-linux/release/bundle/ on the host (kept separate from the
+# Windows target/ dir so the two builds don't conflict).
 
 FROM rust:1-bookworm
 
@@ -32,8 +37,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 WORKDIR /work
 
 # Build script: runs npm install + tauri build with a Linux-only target dir.
-# Always overwrites any host node_modules (which may contain Windows binaries).
-RUN printf '#!/bin/sh\nset -eu\necho "[linux-build] node $(node -v) | rust $(rustc --version)"\necho "[linux-build] cleaning Windows node_modules if present..."\nrm -rf node_modules\nnpm install --no-audit --no-fund\nexport CARGO_TARGET_DIR=/work/src-tauri/target-linux\necho "[linux-build] running tauri build..."\nnpm run tauri build -- --verbose\necho "[linux-build] artifacts:"\nls -lh src-tauri/target-linux/release/bundle/*/* 2>/dev/null || true\nls -lh src-tauri/target-linux/release/claude-usage 2>/dev/null || true\n' > /usr/local/bin/build.sh \
+# node_modules lives in a named volume (see Usage above), so host shims are safe.
+RUN printf '#!/bin/sh\nset -eu\necho "[linux-build] node $(node -v) | rust $(rustc --version)"\nnpm install --no-audit --no-fund\nexport CARGO_TARGET_DIR=/work/src-tauri/target-linux\necho "[linux-build] running tauri build..."\nnpm run tauri build -- --verbose\necho "[linux-build] artifacts:"\nls -lh src-tauri/target-linux/release/bundle/*/* 2>/dev/null || true\nls -lh src-tauri/target-linux/release/claude-usage 2>/dev/null || true\n' > /usr/local/bin/build.sh \
     && chmod +x /usr/local/bin/build.sh
 
 CMD ["build.sh"]

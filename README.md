@@ -83,8 +83,13 @@ writes Linux artifacts to a separate `src-tauri/target-linux/` so it never confl
 
 ```bash
 docker build -t claude-usage-linux-build -f Dockerfile.linux-build .
-docker run --rm -v "$PWD:/work" claude-usage-linux-build
+docker run --rm \
+  -v "$PWD:/work" \
+  -v claude-usage-node-modules:/work/node_modules \
+  claude-usage-linux-build
 ```
+
+The named volume keeps Linux `node_modules` isolated from the host's Windows shims.
 
 Outputs under `src-tauri/target-linux/release/`:
 - `claude-usage` (standalone binary, ~9 MB)
