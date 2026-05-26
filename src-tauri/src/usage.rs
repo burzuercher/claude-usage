@@ -601,38 +601,74 @@ fn _touch_timezone() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
-    /// Smoke test against the real local logs — prints a summary so we can
-    /// eyeball that aggregation works. Run with:
-    ///   cargo test smoke -- --nocapture
-    #[test]
-    fn smoke() {
-        let u = collect();
-        println!("is_mock      = {}", u.is_mock);
-        println!("today        = {} tokens / ${:.2} / {} prompts", u.today.tokens, u.today.cost, u.today.prompts);
-        println!("month        = {} tokens / ${:.2} / {} prompts (since {})", u.month.tokens, u.month.cost, u.month.prompts, u.month.started_at);
-        println!("session      = {} prompts, {} tokens (since {})", u.session.prompts, u.session.tokens, u.session.started_at);
-        println!("weekly       = {} prompts ({} opus)", u.weekly.prompts, u.weekly.opus_prompts);
-        println!("models:");
-        for m in &u.models {
-            println!("  {:<7} {:>9} tok  ${:>7.2}  {} prompts", m.id, m.tokens, m.cost, m.prompts);
-        }
-        println!("surfaces:");
-        for s in &u.surfaces {
-            println!("  {:<6} {} prompts", s.id, s.prompts);
-        }
-        println!("burn (5h bins) = {:?}", u.burn);
-        println!("daily:");
-        for d in &u.daily {
-            println!("  {} code={} chat={} other={}", d.label, d.code, d.chat, d.other);
-        }
-        println!("recent:");
-        for r in &u.recent {
-            println!("  [{}] {} — {} ({})", r.model, r.task, fmtk(r.tokens), r.t);
+    fn temp_subdir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "cu-{tag}-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn write_fixture(dir: &std::path::Path) {
+        let ts = Utc::now().to_rfc3339();
+        let mut f = std::fs::File::create(dir.join("session.jsonl")).unwrap();
+        let lines = [
+            format!(r#"{{"type":"user","timestamp":"{ts}","sessionId":"s1","message":{{"role":"user","content":"refactor the auth flow"}}}}"#),
+            // opus turn
+            format!(r#"{{"type":"assistant","timestamp":"{ts}","sessionId":"s1","requestId":"r1","entrypoint":"cli","cwd":"C:/x","message":{{"id":"m1","model":"claude-opus-4-7","usage":{{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000}}}}}}"#),
+            // exact duplicate (same requestId+id) — must be deduped
+            format!(r#"{{"type":"assistant","timestamp":"{ts}","sessionId":"s1","requestId":"r1","entrypoint":"cli","cwd":"C:/x","message":{{"id":"m1","model":"claude-opus-4-7","usage":{{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000}}}}}}"#),
+            // haiku turn on the desktop surface
+            format!(r#"{{"type":"assistant","timestamp":"{ts}","sessionId":"s1","requestId":"r2","entrypoint":"claude-desktop","cwd":"C:/x","message":{{"id":"m2","model":"claude-haiku-4-5","usage":{{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}}}}"#),
+        ];
+        for l in lines {
+            writeln!(f, "{l}").unwrap();
         }
     }
 
-    fn fmtk(n: u64) -> String {
-        if n >= 1_000_000 { format!("{:.2}M", n as f64 / 1e6) } else { format!("{:.1}k", n as f64 / 1e3) }
+    #[test]
+    fn aggregates_dedups_and_buckets() {
+        let dir = temp_subdir("agg");
+        write_fixture(&dir);
+        let u = collect_at(Some(dir.clone()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(!u.is_mock);
+        // 2 unique assistant turns (the duplicate r1/m1 was deduped)
+        assert_eq!(u.today.prompts, 2);
+        assert_eq!(u.session.prompts, 2);
+
+        // models: opus + haiku, opus tokens are the full sum of all four buckets
+        assert_eq!(u.models.len(), 2);
+        let opus = u.models.iter().find(|m| m.id == "opus").unwrap();
+        assert_eq!(opus.tokens, 10 + 20 + 100 + 1000);
+        assert!(opus.cost > 0.0);
+
+        // surfaces: cli -> code, claude-desktop -> chat
+        assert_eq!(u.surfaces.iter().find(|s| s.id == "code").unwrap().prompts, 1);
+        assert_eq!(u.surfaces.iter().find(|s| s.id == "chat").unwrap().prompts, 1);
+
+        // recent task is labeled from the first user message
+        assert!(u.recent.iter().any(|r| r.task.contains("refactor the auth flow")));
+    }
+
+    #[test]
+    fn empty_dir_returns_mock_flag() {
+        let dir = temp_subdir("empty");
+        let u = collect_at(Some(dir.clone()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(u.is_mock);
+    }
+
+    #[test]
+    fn surface_mapping() {
+        assert_eq!(surface_of("cli", "C:/x"), "code");
+        assert_eq!(surface_of("sdk-cli", "C:/x"), "code");
+        assert_eq!(surface_of("", "C:/x"), "code"); // older logs w/o entrypoint
+        assert_eq!(surface_of("claude-desktop", ""), "chat");
     }
 }

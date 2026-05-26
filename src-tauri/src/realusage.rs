@@ -201,3 +201,48 @@ fn parse_usage(body: Value) -> RealUsage {
 
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_utilization_to_unit_range() {
+        assert!((norm_util(38.0) - 0.38).abs() < 1e-9); // percent form
+        assert!((norm_util(0.5) - 0.5).abs() < 1e-9); // already a fraction
+        assert_eq!(norm_util(250.0), 1.0); // clamped
+    }
+
+    #[test]
+    fn parses_session_weekly_and_extra() {
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{
+              "five_hour": {"utilization": 38, "resets_at": "2026-05-26T20:00:00Z"},
+              "seven_day": {"utilization": 10, "resets_at": "2026-05-29T14:00:00Z"},
+              "seven_day_sonnet": {"utilization": 2, "resets_at": "2026-05-29T14:00:00Z"},
+              "seven_day_omelette": {"utilization": 2, "resets_at": "2026-05-29T14:00:00Z"},
+              "seven_day_cowork": {"utilization": 0, "resets_at": "x"},
+              "extra_usage": {"is_enabled": true, "used_credits": 806.0, "monthly_limit": 1000.0, "currency": "USD", "utilization": 0.8}
+            }"#,
+        )
+        .unwrap();
+        let u = parse_usage(body);
+
+        assert!(u.found);
+        assert!((u.session.unwrap().utilization - 0.38).abs() < 1e-9);
+
+        // Allowlisted, ordered; "omelette" -> Claude Design; cowork excluded.
+        let labels: Vec<&str> = u.weekly.iter().map(|b| b.label.as_str()).collect();
+        assert_eq!(labels, vec!["All models", "Sonnet only", "Claude Design"]);
+
+        let ex = u.extra.expect("extra usage parsed");
+        assert!(ex.is_enabled);
+        assert!((ex.used_credits - 806.0).abs() < 1e-9);
+        assert!((ex.monthly_limit - 1000.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn non_object_body_is_not_found() {
+        assert!(!parse_usage(serde_json::json!([1, 2, 3])).found);
+    }
+}

@@ -73,3 +73,43 @@ pub fn read_account_at(path: &std::path::Path) -> Account {
         detected_plan,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_tiers_to_plan_ids() {
+        assert_eq!(detect_plan("claude_team", "default_claude_max_5x"), "team");
+        assert_eq!(detect_plan("enterprise", "whatever"), "team");
+        assert_eq!(detect_plan("", "default_claude_max_20x"), "max20");
+        assert_eq!(detect_plan("", "default_claude_max_5x"), "max5");
+        assert_eq!(detect_plan("", "pro"), "pro");
+        assert_eq!(detect_plan("", "unknown"), "max5"); // safe default
+    }
+
+    #[test]
+    fn reads_oauth_account_from_file() {
+        let dir = std::env::temp_dir().join(format!("cu-acct-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join(".claude.json");
+        std::fs::write(
+            &p,
+            r#"{"oauthAccount":{"emailAddress":"a@b.com","organizationName":"Acme","organizationType":"claude_team","userRateLimitTier":"default_claude_max_5x","seatTier":"team_tier_1"}}"#,
+        )
+        .unwrap();
+        let a = read_account_at(&p);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(a.found);
+        assert_eq!(a.email, "a@b.com");
+        assert_eq!(a.org_name, "Acme");
+        assert_eq!(a.seat_tier, "team_tier_1");
+        assert_eq!(a.detected_plan, "team");
+    }
+
+    #[test]
+    fn missing_file_is_not_found() {
+        assert!(!read_account_at(std::path::Path::new("C:/nope/missing/.claude.json")).found);
+    }
+}

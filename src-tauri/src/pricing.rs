@@ -75,3 +75,29 @@ pub fn turn_cost(
         + (cache_write as f64) * p.cache_write / per
         + (cache_read as f64) * p.cache_read / per
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buckets_model_ids_into_families() {
+        assert_eq!(Family::from_model("claude-opus-4-7"), Family::Opus);
+        assert_eq!(Family::from_model("claude-sonnet-4-6"), Family::Sonnet);
+        assert_eq!(Family::from_model("claude-haiku-4-5-20251001"), Family::Haiku);
+        assert_eq!(Family::from_model("some-other-model"), Family::Other);
+    }
+
+    #[test]
+    fn opus_uses_5_25_rates() {
+        // 1M input @ $5 + 1M output @ $25 = $30
+        assert!((turn_cost(Family::Opus, 1_000_000, 1_000_000, 0, 0) - 30.0).abs() < 1e-9);
+        // cache read is cheap ($0.50 / Mtok)
+        assert!((turn_cost(Family::Opus, 0, 0, 0, 1_000_000) - 0.50).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zero_tokens_zero_cost() {
+        assert_eq!(turn_cost(Family::Sonnet, 0, 0, 0, 0), 0.0);
+    }
+}

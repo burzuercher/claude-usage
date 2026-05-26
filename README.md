@@ -71,6 +71,20 @@ npm run tauri dev      # launches the widget
 npm run tauri build    # produces an installer / executable under src-tauri/target
 ```
 
+Outputs (Windows): `src-tauri/target/release/claude-usage.exe` (~10 MB) plus an `.msi` and an
+NSIS `-setup.exe` under `src-tauri/target/release/bundle/`.
+
+## Test
+
+```bash
+npm test                       # frontend unit tests (Vitest): format, economics, settings
+cargo test --manifest-path src-tauri/Cargo.toml   # backend tests: pricing, usage aggregation,
+                                                  # env resolution, account detection, usage-API parsing
+```
+
+Backend tests are hermetic — usage aggregation runs against fixtures written to a temp dir (no
+dependency on your real `~/.claude` logs).
+
 ## Project layout
 
 - `src/` — React/TypeScript frontend (ported pixel-for-pixel from the design prototype)

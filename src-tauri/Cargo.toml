@@ -27,8 +27,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 window-vibrancy = "0.5"
 
 [profile.release]
-panic = "abort"
-codegen-units = 1
-lto = true
+# Conservative settings: aggressive LTO + codegen-units=1 crashed rustc while
+# compiling the `brotli` dependency on this toolchain. "s" keeps the binary small.
 opt-level = "s"
 strip = true

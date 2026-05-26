@@ -138,3 +138,34 @@ pub fn account_for(env_id: &str) -> Account {
     let id = if env_id.is_empty() { DEFAULT_ID } else { env_id };
     read_account_at(&account_file_for(&dir, id, &home))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_traversal_and_non_claude_names() {
+        assert!(config_dir_for("../etc").is_none());
+        assert!(config_dir_for(".claude/../secret").is_none()); // contains '/'
+        assert!(config_dir_for("notclaude").is_none());
+    }
+
+    #[test]
+    fn resolves_existing_absolute_path() {
+        let tmp = std::env::temp_dir();
+        assert_eq!(config_dir_for(tmp.to_str().unwrap()), Some(tmp.clone()));
+        assert!(config_dir_for("C:/definitely/missing/path/xyz123").is_none());
+    }
+
+    #[test]
+    fn projects_dir_accepts_a_projects_folder() {
+        let dir = std::env::temp_dir().join(format!("cu-env-{}", std::process::id()));
+        let projects = dir.join("projects");
+        std::fs::create_dir_all(&projects).unwrap();
+        // The config dir resolves to its projects/ subdir.
+        assert_eq!(projects_dir_for(dir.to_str().unwrap()), Some(projects.clone()));
+        // A path that already points at a projects/ folder is accepted as-is.
+        assert_eq!(projects_dir_for(projects.to_str().unwrap()), Some(projects.clone()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
