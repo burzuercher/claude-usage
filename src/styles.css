@@ -509,7 +509,19 @@ html, body {
 .sp-stepper-val { min-width: 22px; text-align: center; font-size: 12px; font-weight: 500; }
 
 /* Empty / loading hint */
-.empty-hint { font-size: 11px; color: var(--ink-60); text-align: center; padding: 24px 8px; font-style: italic; }
+.empty-hint {
+  font-size: 11px; color: var(--ink-60); text-align: center; padding: 24px 8px; font-style: italic;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.empty-hint.loading { padding: 32px 8px; }
+.empty-hint .mono { font-style: normal; color: var(--ink-40); }
+.spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid var(--ink-30);
+  border-top-color: var(--clay);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Footer */
 .footer {

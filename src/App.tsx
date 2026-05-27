@@ -48,7 +48,7 @@ export default function App() {
   const account = selectedEnv?.account;
 
   const { data, refresh } = useUsage(selectedEnvId);
-  const { real, refresh: refreshReal } = useRealUsage(selectedEnvId);
+  const { real, loading: realLoading, refresh: refreshReal } = useRealUsage(selectedEnvId);
 
   // Plan: auto-detected from the selected account, or manual override.
   const detected = account?.detectedPlan || "";
@@ -80,6 +80,7 @@ export default function App() {
       <Widget
         data={data}
         real={real}
+        realLoading={realLoading}
         plan={plan}
         seats={settings.seats}
         compact={settings.compact}

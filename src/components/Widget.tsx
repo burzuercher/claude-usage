@@ -26,6 +26,7 @@ async function win<T>(fn: (w: ReturnType<typeof getCurrentWindow>) => Promise<T>
 export function Widget({
   data,
   real,
+  realLoading,
   plan,
   seats,
   compact,
@@ -39,6 +40,7 @@ export function Widget({
 }: {
   data: UsageData;
   real: RealUsage;
+  realLoading: boolean;
   plan: PlanDef;
   seats: number;
   compact: boolean;
@@ -199,6 +201,7 @@ export function Widget({
             sessionUsed={sessionUsed}
             resetIn={resetIn}
             live={live}
+            realLoading={realLoading}
             unavailableReason={real.reason}
             weeklyRows={weeklyRows}
             forecastLabel={forecastLabel}

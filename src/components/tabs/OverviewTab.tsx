@@ -18,6 +18,8 @@ export interface OverviewProps {
   resetIn: string;
   /** True when /api/oauth/usage has produced a session result for this env. */
   live: boolean;
+  /** True while the first /api/oauth/usage call for this env is in flight. */
+  realLoading: boolean;
   /** Reason live is unavailable (from the backend), shown in the empty state. */
   unavailableReason?: string;
   weeklyRows: WeeklyRow[]; // empty when no live data
@@ -27,6 +29,18 @@ export interface OverviewProps {
   burn: number[];
   econ: Economics;
   showSpend: boolean;
+}
+
+// Translate the backend's terse `reason` strings into actionable user guidance.
+function reasonHint(reason: string | undefined): string {
+  const r = (reason ?? "").toLowerCase();
+  if (!r) return "";
+  if (r.includes("no credentials")) return "Sign in to this account in Claude Code to enable live limits.";
+  if (r.includes("token expired")) return "Token expired — run `claude` in this account to refresh.";
+  if (r.includes("401")) return "Token rejected by Anthropic — sign in again in Claude Code.";
+  if (r.includes("request failed")) return "Couldn't reach the Claude API — check your network.";
+  if (r.includes("can't read") || r.includes("bad credentials")) return "Credentials file is unreadable — try signing in again.";
+  return "";
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -70,8 +84,10 @@ export function OverviewTab(p: OverviewProps) {
 
   return (
     <>
-      {/* Live-only: ring, forecast, weekly limits. Hidden with an honest empty
-          state when /api/oauth/usage hasn't produced data for this env. */}
+      {/* Live-only: ring, forecast, weekly limits. Shows a loading placeholder
+          during the initial fetch for an env (so switching accounts doesn't
+          flash the empty state), then either the data or an honest empty state
+          with reason-specific guidance. */}
       {p.live && p.sessionUsed !== undefined ? (
         <>
           <Ring value={p.sessionUsed} resetIn={p.resetIn} />
@@ -95,12 +111,19 @@ export function OverviewTab(p: OverviewProps) {
             </div>
           )}
         </>
+      ) : p.realLoading ? (
+        <div className="empty-hint loading">
+          <span className="spinner" />
+          Connecting to Claude…
+        </div>
       ) : (
         <div className="empty-hint">
           Live usage limits aren't available for this account
-          {p.unavailableReason ? <> ({p.unavailableReason})</> : null}.
-          <br />
-          Sign in to this account in Claude Code to enable live limits.
+          {p.unavailableReason ? <> · <span className="mono">{p.unavailableReason}</span></> : null}.
+          {(() => {
+            const hint = reasonHint(p.unavailableReason);
+            return hint ? (<><br />{hint}</>) : null;
+          })()}
         </div>
       )}
 
