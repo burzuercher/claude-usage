@@ -6,6 +6,7 @@ import {
   fmtForecast,
   fmtResetRelative,
   fmtResetAbsolute,
+  fmtAgo,
   clamp01,
 } from "./format";
 
@@ -77,5 +78,23 @@ describe("reset formatters", () => {
     const out = fmtResetAbsolute("2026-05-29T18:00:00.000Z");
     expect(out).toMatch(/^[A-Z][a-z]{2}\s/); // e.g. "Fri 1:00 PM"
     expect(out).toMatch(/(AM|PM)$/);
+  });
+});
+
+describe("fmtAgo", () => {
+  const now = 1_700_000_000_000;
+  it("says just now under a minute", () => {
+    expect(fmtAgo(now - 5_000, now)).toBe("just now");
+    expect(fmtAgo(now + 5_000, now)).toBe("just now"); // clock skew → not negative
+  });
+  it("uses duration formatting under a day", () => {
+    expect(fmtAgo(now - 3 * 60_000, now)).toBe("3m ago");
+    expect(fmtAgo(now - (60 + 4) * 60_000, now)).toBe("1h 04m ago");
+  });
+  it("uses days beyond 24h", () => {
+    expect(fmtAgo(now - 2.5 * 86_400_000, now)).toBe("2d ago");
+  });
+  it("returns empty for a missing timestamp", () => {
+    expect(fmtAgo(0, now)).toBe("");
   });
 });

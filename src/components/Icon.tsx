@@ -1,8 +1,6 @@
 // SVG icon set ported from the prototype's widget.jsx.
 
-export type IconName =
-  | "pin" | "min" | "max" | "x" | "code" | "chat" | "cowork"
-  | "spark" | "down" | "gear" | "refresh";
+export type IconName = "pin" | "min" | "max" | "x" | "spark" | "gear" | "refresh";
 
 export function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
   const s = { width: size, height: size, display: "inline-block", verticalAlign: "-2px" } as const;
@@ -20,34 +18,12 @@ export function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
       return <svg style={s} viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" stroke="currentColor" strokeWidth="1.1" fill="none" /></svg>;
     case "x":
       return <svg style={s} viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.1" /></svg>;
-    case "code":
-      return (
-        <svg style={s} viewBox="0 0 16 16" fill="none">
-          <path d="M6 4 2 8l4 4M10 4l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "chat":
-      return (
-        <svg style={s} viewBox="0 0 16 16" fill="none">
-          <path d="M3 4h10v7H7l-3 3v-3H3z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-        </svg>
-      );
-    case "cowork":
-      return (
-        <svg style={s} viewBox="0 0 16 16" fill="none">
-          <circle cx="6" cy="6" r="2.2" stroke="currentColor" strokeWidth="1.2" />
-          <circle cx="11" cy="9" r="1.8" stroke="currentColor" strokeWidth="1.2" />
-          <path d="M2 13c.5-2 2-3 4-3M8 13c.4-1.4 1.4-2.2 3-2.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-      );
     case "spark":
       return (
         <svg style={s} viewBox="0 0 16 16" fill="none">
           <path d="M8 1.5 9.4 6 14 7.5 9.4 9 8 13.5 6.6 9 2 7.5 6.6 6z" fill="currentColor" />
         </svg>
       );
-    case "down":
-      return <svg style={s} viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>;
     case "gear":
       // Sliders/controls glyph — clearer "settings" than a cog at small sizes.
       return (

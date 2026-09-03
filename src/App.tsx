@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
-import { Widget } from "./components/Widget";
+import { Widget, type Tab } from "./components/Widget";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { useUsage } from "./hooks/useUsage";
 import { useRealUsage } from "./hooks/useRealUsage";
+import { useAttribution } from "./hooks/useAttribution";
 import { useEnvironments } from "./hooks/useEnvironments";
 import { PLANS } from "./lib/plans";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settings";
@@ -13,6 +14,7 @@ import type { PlanTier, Settings } from "./lib/types";
 export default function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings() ?? DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>("overview");
   const [autostart, setAutostart] = useState(false);
 
   // Reflect the OS-level launch-at-login registration.
@@ -47,8 +49,23 @@ export default function App() {
   const selectedEnv = visibleEnvs.find((e) => e.id === selectedEnvId);
   const account = selectedEnv?.account;
 
-  const { data, refresh } = useUsage(selectedEnvId);
   const { real, loading: realLoading, refresh: refreshReal } = useRealUsage(selectedEnvId);
+
+  // Scope the local per-model split to the live session window (reset − 5h) so
+  // it lines up with the ring; undefined → backend falls back to a local 5h block.
+  const sessionStartMs = useMemo(() => {
+    const iso = real.found ? real.session?.resetsAt : "";
+    if (!iso) return undefined;
+    const t = Date.parse(iso);
+    return Number.isNaN(t) ? undefined : t - 5 * 3600 * 1000;
+  }, [real.found, real.session?.resetsAt]);
+
+  const { data, refresh } = useUsage(selectedEnvId, sessionStartMs);
+
+  // Local attribution backs the Limits and Sessions tabs. Scanning reads every
+  // transcript touched in the last 7 days, so it only runs while one is open.
+  const attrTab = tab === "limits" || tab === "sessions";
+  const { attr, loading: attrLoading, refresh: refreshAttr } = useAttribution(selectedEnvId, attrTab);
 
   // Plan: auto-detected from the selected account, or manual override.
   const detected = account?.detectedPlan || "";
@@ -81,10 +98,15 @@ export default function App() {
         data={data}
         real={real}
         realLoading={realLoading}
+        attr={attr}
+        attrLoading={attrLoading}
+        tab={tab}
+        onTabChange={setTab}
         plan={plan}
         seats={settings.seats}
         compact={settings.compact}
         showSpend={settings.showSpend}
+        settingsOpen={settingsOpen}
         account={account}
         envLabel={selectedEnv?.label ?? ""}
         envId={selectedEnvId}
@@ -93,6 +115,7 @@ export default function App() {
         onRefresh={() => {
           refresh();
           refreshReal();
+          if (attrTab) refreshAttr();
         }}
       />
       {settingsOpen && (

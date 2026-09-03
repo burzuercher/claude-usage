@@ -41,3 +41,12 @@ export const fmtResetAbsolute = (iso: string): string => {
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" });
 };
+
+/** "just now" / "3m ago" / "1h 04m ago" / "2d ago" for a past ms-epoch timestamp. */
+export const fmtAgo = (ts: number, now: number): string => {
+  if (!ts || !Number.isFinite(ts)) return "";
+  const ms = Math.max(0, now - ts);
+  if (ms < 60_000) return "just now";
+  if (ms < 86_400_000) return `${fmtDuration(ms)} ago`;
+  return `${Math.floor(ms / 86_400_000)}d ago`;
+};

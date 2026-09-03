@@ -49,7 +49,7 @@ function daysInMonth(d: Date) {
 }
 
 // Compute economics from real data only. `realExtraUsage` is the authoritative
-// `extra_usage.used_credits` from Anthropic; pass undefined when unavailable
+// extra-usage spend in dollars from Anthropic (`spend.used`); pass undefined when unavailable
 // (we then report 0 + no projection, never an estimate). `month` is local-log
 // tracked usage, used only to surface the API-rate "value" of this month's
 // tokens as an informational stat (not a usage cap).

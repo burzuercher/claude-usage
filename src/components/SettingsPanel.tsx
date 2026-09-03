@@ -182,7 +182,7 @@ export function SettingsPanel({
             </button>
           </div>
           <div className="sp-row">
-            <span className="sp-lbl">Show expenditures</span>
+            <span className="sp-lbl">Show expenditure card</span>
             <button className="sp-toggle" data-on={settings.showSpend ? 1 : 0} onClick={() => onChange("showSpend", !settings.showSpend)}>
               <i />
             </button>

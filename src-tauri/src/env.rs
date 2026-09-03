@@ -128,15 +128,22 @@ pub fn projects_dir_for(env_id: &str) -> Option<PathBuf> {
     }
 }
 
-/// Read the account for any environment id (discovered name or custom path).
-pub fn account_for(env_id: &str) -> Account {
-    let dir = match config_dir_for(env_id) {
-        Some(d) => d,
-        None => return Account::default(),
-    };
+/// The account file (`.claude.json`) for any environment id. Besides the
+/// `oauthAccount`, Claude Code keeps its cached usage response and feature
+/// flags in this file, which `realusage` reads.
+pub fn account_file_for_env(env_id: &str) -> Option<PathBuf> {
+    let dir = config_dir_for(env_id)?;
     let home = dirs::home_dir().unwrap_or_default();
     let id = if env_id.is_empty() { DEFAULT_ID } else { env_id };
-    read_account_at(&account_file_for(&dir, id, &home))
+    Some(account_file_for(&dir, id, &home))
+}
+
+/// Read the account for any environment id (discovered name or custom path).
+pub fn account_for(env_id: &str) -> Account {
+    match account_file_for_env(env_id) {
+        Some(p) => read_account_at(&p),
+        None => Account::default(),
+    }
 }
 
 #[cfg(test)]

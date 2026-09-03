@@ -1,4 +1,5 @@
 mod account;
+mod attribution;
 mod env;
 mod pricing;
 mod realusage;
@@ -7,10 +8,22 @@ mod usage;
 use tauri::Manager;
 
 /// Aggregate usage from a specific environment's logs (defaults to `.claude`).
+/// `session_start_ms` is the live session window start (reset − 5h) when the
+/// frontend knows it, so the per-model split lines up with the ring.
 #[tauri::command]
-fn get_usage(env_id: Option<String>) -> usage::UsageData {
+fn get_usage(env_id: Option<String>, session_start_ms: Option<i64>) -> usage::UsageData {
     let id = env_id.unwrap_or_default();
-    usage::collect_at(env::projects_dir_for(&id))
+    usage::collect_at(env::projects_dir_for(&id), session_start_ms)
+}
+
+/// Local attribution for the "what's contributing to your limits" view: which
+/// behaviors, skills, subagents and MCP servers are driving usage, plus
+/// per-session accounting. Machine-local and approximate, exactly as Claude
+/// Code's own /usage screen is.
+#[tauri::command]
+fn get_attribution(env_id: Option<String>) -> attribution::Attribution {
+    let id = env_id.unwrap_or_default();
+    attribution::collect_at(env::projects_dir_for(&id))
 }
 
 /// List discovered Claude environments (separate `~/.claude*` config dirs).
@@ -61,6 +74,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_usage,
+            get_attribution,
             get_account,
             get_real_usage,
             list_environments,

@@ -18,6 +18,7 @@
   --ember:      #B14A2C;
   --sand:       #C9A77A;
   --moss:       #6B8E5A;
+  --plum:       #7A4E8C;
 
   --win-bg:     rgba(250, 244, 237, 0.78);
   --win-bd:     rgba(255, 255, 255, 0.55);
@@ -46,6 +47,7 @@
   --amber:      #D9A350;
   --ember:      #D86A4A;
   --sand:       #C9A77A;
+  --plum:       #B08BC4;
 
   --win-bg:     rgba(31, 27, 22, 0.78);
   --win-bd:     rgba(255, 255, 255, 0.10);
@@ -119,6 +121,8 @@ html, body {
 .chrome-btn:hover { background: var(--ink-10); }
 .chrome-btn.close:hover { background: #E81123; color: #fff; }
 .chrome-btn.pin { width: 32px; opacity: 0.6; }
+.chrome-btn.tool { width: 32px; color: var(--ink-60); }
+.chrome-btn.tool:hover { color: var(--ink); }
 .chrome-btn.pin.on { opacity: 1; color: var(--clay); background: rgba(217,119,87,0.10); }
 
 /* Tabs */
@@ -145,9 +149,6 @@ html, body {
   content: ''; position: absolute; left: 8px; right: 8px; bottom: -0.5px;
   height: 2px; background: var(--clay); border-radius: 1px 1px 0 0;
 }
-.tab.icon-only { padding: 8px; color: var(--ink-60); }
-.tab.icon-only.on { color: var(--clay); }
-.tab-spacer { flex: 1; }
 
 /* Body */
 .body {
@@ -269,153 +270,6 @@ html, body {
 /* Spark */
 .spark { display: block; margin-top: 2px; }
 
-/* Models tab */
-.models { display: flex; flex-direction: column; gap: 14px; }
-.model-card {
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 12px;
-  background: var(--ink-10);
-  border-radius: 10px;
-  transition: background 150ms;
-}
-.dark .model-card { background: rgba(255,255,255,0.04); }
-.model-card:hover { background: rgba(217, 119, 87, 0.10); }
-.model-head { display: flex; justify-content: space-between; align-items: center; }
-.model-name { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
-.model-dot { width: 8px; height: 8px; border-radius: 50%; }
-.model-pct { font-size: 14px; font-weight: 500; }
-.model-meta {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-top: 2px; font-size: 10.5px;
-}
-.model-note { color: var(--ink-60); font-style: italic; }
-.model-stat { color: var(--ink-2); display: flex; gap: 5px; align-items: center; }
-.model-stat .sep { color: var(--ink-40); }
-
-.tip {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 12px;
-  background: rgba(198, 139, 54, 0.10);
-  border: 0.5px dashed rgba(198, 139, 54, 0.35);
-  border-radius: 8px;
-  font-size: 11px;
-  color: var(--ink-2);
-}
-.tip svg { color: var(--amber); flex-shrink: 0; }
-
-/* Surfaces tab */
-.surfaces { display: flex; flex-direction: column; gap: 14px; }
-.surface-note {
-  font-size: 11px; color: var(--ink-60); font-style: italic;
-  padding: 8px 0;
-  border-bottom: 0.5px solid var(--line);
-}
-.surface-row { display: flex; gap: 12px; align-items: flex-start; }
-.surface-icon {
-  width: 32px; height: 32px; border-radius: 8px;
-  background: var(--ink-10);
-  display: grid; place-items: center;
-  color: var(--ink-2);
-  flex-shrink: 0;
-}
-.dark .surface-icon { background: rgba(255,255,255,0.05); }
-.surface-body { flex: 1; display: flex; flex-direction: column; gap: 5px; }
-.surface-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; }
-.surface-head b { font-weight: 600; }
-.surface-meta { font-size: 10px; color: var(--ink-60); }
-
-/* Daily split */
-.daily {
-  display: flex; justify-content: space-between; align-items: flex-end;
-  gap: 6px; height: 96px;
-}
-.daily-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.daily-bar {
-  width: 100%; max-width: 24px;
-  display: flex; flex-direction: column-reverse;
-  border-radius: 4px; overflow: hidden;
-  background: var(--track);
-  transition: filter 150ms;
-}
-.daily-bar:hover { filter: brightness(1.05); }
-.daily-bar > div { transition: flex 600ms; }
-.daily-lbl { font-size: 9.5px; color: var(--ink-60); font-family: var(--font-mono); }
-
-/* History */
-.history { display: flex; flex-direction: column; gap: 12px; }
-.hist-list { display: flex; flex-direction: column; gap: 8px; }
-.hist-row {
-  display: flex; gap: 10px; align-items: center;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--ink-10);
-  transition: background 120ms;
-}
-.dark .hist-row { background: rgba(255,255,255,0.04); }
-.hist-row:hover { background: rgba(217, 119, 87, 0.12); }
-.hist-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.hist-body { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.hist-task {
-  font-size: 11.5px; color: var(--ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.hist-meta { font-size: 10px; color: var(--ink-60); }
-.hist-spark { width: 56px; height: 22px; }
-.mini-bars { display: flex; align-items: flex-end; gap: 2px; height: 100%; width: 100%; }
-.mini-bars span { flex: 1; background: var(--clay); border-radius: 1px; opacity: 0.7; min-height: 2px; }
-
-/* Heatmap */
-.heat { display: flex; flex-direction: column; gap: 2px; background: var(--ink-10); padding: 8px; border-radius: 8px; }
-.dark .heat { background: rgba(255,255,255,0.04); }
-.heat-row { display: flex; gap: 2px; align-items: center; }
-.heat-day { width: 14px; font-size: 9px; color: var(--ink-60); font-family: var(--font-mono); }
-.heat-cell {
-  flex: 1; height: 14px; border-radius: 2px;
-  background: var(--track);
-  transition: transform 120ms;
-}
-.heat-cell:hover { transform: scale(1.4); border-radius: 3px; outline: 1px solid var(--clay); }
-
-/* Spend tab */
-.spend { display: flex; flex-direction: column; gap: 14px; }
-.spend-hero {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 14px 12px 16px;
-  background: rgba(217, 119, 87, 0.08);
-  border: 0.5px solid rgba(217, 119, 87, 0.22);
-  border-radius: 12px;
-}
-.spend-hero-lbl {
-  font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--ink-60);
-}
-.spend-hero-num {
-  font-family: var(--font-mono); font-size: 38px; font-weight: 500;
-  letter-spacing: -0.03em; line-height: 1; color: var(--ink);
-}
-.spend-proj {
-  display: flex; align-items: center; gap: 6px; margin-top: 4px;
-  font-size: 11px; color: var(--ink-60);
-}
-.spend-proj svg { color: var(--clay); }
-.spend-proj b { color: var(--ink); font-weight: 600; }
-.spend-proj.warn svg { color: var(--ember); }
-
-.spend-rows { display: flex; flex-direction: column; gap: 2px; }
-.spend-row {
-  display: flex; align-items: baseline; justify-content: space-between;
-  padding: 8px 0; font-size: 12px;
-  border-bottom: 0.5px solid var(--line-2);
-}
-.spend-row.total {
-  border-bottom: 0; border-top: 0.5px solid var(--line); margin-top: 2px; padding-top: 10px;
-  font-weight: 600;
-}
-.spend-row-lbl { color: var(--ink-2); }
-.spend-row-sub { color: var(--ink-40); font-size: 10.5px; }
-.spend-row-val { font-size: 13px; font-weight: 500; color: var(--ink); }
-.spend-row-val.hot { color: var(--ember); }
-
 /* Expenditure mini card (Overview) */
 .spend-mini-row { display: flex; justify-content: space-between; gap: 8px; }
 .spend-mini-cell {
@@ -426,6 +280,60 @@ html, body {
 .spend-mini-num { font-size: 14px; font-weight: 500; color: var(--ink); }
 .spend-mini-num.hot { color: var(--ember); }
 .spend-mini-lbl { font-size: 9px; color: var(--ink-60); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Limits — local attribution ("what's contributing to your limits") */
+.span-seg { flex: 0 0 auto; }
+.span-seg button { padding: 3px 9px; font-size: 10px; }
+.attr-note { font-size: 10px; line-height: 1.45; color: var(--ink-40); }
+.attr-sub { font-size: 10px; line-height: 1.45; color: var(--ink-60); margin-top: -4px; }
+
+.behavior { display: flex; flex-direction: column; gap: 5px; }
+.behavior-head { font-size: 11.5px; font-weight: 500; color: var(--ink); }
+.behavior-body { font-size: 10px; line-height: 1.45; color: var(--ink-60); }
+
+.share-rows { display: flex; flex-direction: column; gap: 4px; }
+.share-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.share-name {
+  font-size: 10.5px; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.share-val { font-size: 10.5px; color: var(--ink-60); flex: 0 0 auto; }
+.share-more { font-size: 10px; color: var(--ink-40); }
+
+/* Sessions — per-session accounting from Claude Code's own cost records */
+/* Bounded in px: a flexible height would feed back into the window auto-fit. */
+.sess-list {
+  display: flex; flex-direction: column; gap: 2px;
+  max-height: 168px; overflow-y: auto;
+}
+.sess-item {
+  appearance: none; border: 0; background: transparent; cursor: default;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 5px 7px; border-radius: 6px; text-align: left;
+  font: inherit; color: inherit;
+  transition: background 120ms;
+}
+.sess-item:hover { background: var(--ink-10); }
+.sess-item.on { background: rgba(217,119,87,0.10); }
+.dark .sess-item.on { background: rgba(224,136,104,0.16); }
+.sess-item-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sess-item-label {
+  font-size: 11px; font-weight: 500; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sess-item.on .sess-item-label { color: var(--clay); }
+.sess-item-proj {
+  font-size: 9px; color: var(--ink-40);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sess-item-ago { font-size: 9.5px; color: var(--ink-60); flex: 0 0 auto; }
+
+/* A session label is prose, not a section heading — keep its own casing. */
+.sess-title { text-transform: none; letter-spacing: 0.01em; font-size: 11px; color: var(--ink-2); }
+
+.sess-detail { display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: var(--ink-60); }
+.sess-detail b { font-weight: 500; color: var(--ink-2); }
+.sess-pending { font-style: italic; color: var(--ink-40); }
 
 /* Settings — environment switcher */
 .sp-env-list { display: flex; flex-direction: column; gap: 4px; }
@@ -575,6 +483,7 @@ html, body {
 }
 .sp-panel {
   width: 248px; margin: 10px;
+  max-height: calc(100% - 20px);   /* never taller than the window… */
   background: var(--paper);        /* solid — no widget bleed-through */
   border: 0.5px solid var(--line);
   border-radius: 12px;
@@ -596,7 +505,8 @@ html, body {
   width: 24px; height: 24px; border-radius: 6px; cursor: default; display: grid; place-items: center;
 }
 .sp-x:hover { background: var(--ink-10); color: var(--ink); }
-.sp-body { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.sp-body { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; }
+.sp-hd { flex-shrink: 0; }
 .sp-sect {
   font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--ink-40);
@@ -630,3 +540,29 @@ html, body {
 }
 .sp-swatch:hover { transform: translateY(-1px); }
 .sp-swatch[data-on="1"] { box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px currentColor; }
+
+/* Live-source line + promo notes (Overview) */
+.weekly-src.stale { color: var(--amber); }
+.weekly-src.stale .live-dot { background: var(--amber); box-shadow: none; animation: none; }
+.live-badge.cached { color: var(--amber); }
+.live-badge.cached .live-dot { background: var(--amber); box-shadow: none; animation: none; }
+.weekly-note {
+  color: var(--clay); font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 62%;
+}
+.ring-note {
+  align-self: center; margin-top: -4px;
+  font-size: 10.5px; color: var(--clay); font-weight: 500; text-align: center;
+}
+
+/* Title bar: the tool buttons took width from the subtitle — keep it to one line. */
+.title-left { min-width: 0; }
+.title-text { min-width: 0; }
+.title-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.footer-num.hot { color: var(--ember); }
+
+/* The Settings overlay is positioned against the window, which auto-fits to
+   content. In a short empty state the panel would overflow, so hold the window
+   open to a height that fits the whole panel while Settings is showing. */
+.win.settings-open { min-height: 640px; }

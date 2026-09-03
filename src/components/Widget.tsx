@@ -1,18 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { Icon } from "./Icon";
-import { OverviewTab } from "./tabs/OverviewTab";
-import { ModelsTab } from "./tabs/ModelsTab";
-import { SurfacesTab } from "./tabs/SurfacesTab";
-import { SpendTab } from "./tabs/SpendTab";
-import { HistoryTab } from "./tabs/HistoryTab";
+import { Overview, type Forecast, type WeeklyRow } from "./Overview";
+import { Limits } from "./Limits";
+import { Sessions } from "./Sessions";
 import { fmtTokens, fmtForecast, fmtResetRelative, fmtResetAbsolute } from "../lib/format";
-import type { Account, RealUsage, UsageData } from "../lib/types";
-import type { WeeklyRow } from "./tabs/OverviewTab";
+import type { Account, Attribution, RealUsage, UsageData } from "../lib/types";
 import { computeEconomics, type PlanDef } from "../lib/plans";
-
-type Tab = "overview" | "models" | "surfaces" | "spend" | "history";
-const TABS: Tab[] = ["overview", "models", "surfaces", "spend", "history"];
 
 // Best-effort window control — silently no-ops outside a Tauri context.
 async function win<T>(fn: (w: ReturnType<typeof getCurrentWindow>) => Promise<T>) {
@@ -23,14 +17,24 @@ async function win<T>(fn: (w: ReturnType<typeof getCurrentWindow>) => Promise<T>
   }
 }
 
+/** Views in the body. Overview is live-API data; the other two are derived
+ *  from local transcripts and only scan while they are on screen. */
+export type Tab = "overview" | "limits" | "sessions";
+const TABS: Tab[] = ["overview", "limits", "sessions"];
+
 export function Widget({
   data,
   real,
   realLoading,
+  attr,
+  attrLoading,
+  tab,
+  onTabChange,
   plan,
   seats,
   compact,
   showSpend,
+  settingsOpen,
   account,
   envLabel,
   envId,
@@ -41,10 +45,16 @@ export function Widget({
   data: UsageData;
   real: RealUsage;
   realLoading: boolean;
+  attr: Attribution;
+  attrLoading: boolean;
+  tab: Tab;
+  onTabChange: (t: Tab) => void;
   plan: PlanDef;
   seats: number;
   compact: boolean;
   showSpend: boolean;
+  /** Settings overlay is open — the window must be tall enough to show it. */
+  settingsOpen: boolean;
   account?: Account;
   envLabel: string;
   envId: string;
@@ -52,7 +62,6 @@ export function Widget({
   onOpenSettings: () => void;
   onRefresh: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>("overview");
   const [pinned, setPinned] = useState(true);
   const [now, setNow] = useState(Date.now());
   const winRef = useRef<HTMLDivElement>(null);
@@ -91,43 +100,95 @@ export function Widget({
     };
   }, []);
 
-  // ── Real-only derivations: ring/weekly/forecast come from /api/oauth/usage,
-  //    or are hidden when no live data is available for this env. ──
+  // ── Live-only derivations: ring/weekly/forecast come from /api/oauth/usage
+  //    (or Claude Code's cached copy of it), or are hidden when unavailable. ──
   const live = real.found && !!real.session;
   const sessionUsed = live ? real.session!.utilization : undefined;
-  const resetIn = live ? fmtResetRelative(real.session!.resetsAt, now) : "";
+  // A (cached) session whose reset time has passed describes a window that is
+  // already over — label it instead of showing "resets in 0m".
+  const sessionResetT = live && real.session!.resetsAt ? Date.parse(real.session!.resetsAt) : NaN;
+  const sessionExpired = Number.isFinite(sessionResetT) && sessionResetT <= now;
+  const resetIn = live ? (sessionExpired ? "a new window (data is stale)" : fmtResetRelative(real.session!.resetsAt, now)) : "";
 
   const weeklyRows: WeeklyRow[] = real.found
     ? real.weekly.map((b) => ({
         label: b.label,
         util: b.utilization,
         foot: b.resetsAt ? `resets ${fmtResetAbsolute(b.resetsAt)}` : "",
+        note: b.note,
+        active: b.isActive,
       }))
     : [];
 
-  // Forecast: only when we have a live session utilization to project from.
-  let forecastLabel: string | undefined;
-  let willBust = false;
-  if (live && real.session!.resetsAt) {
-    const resetT = Date.parse(real.session!.resetsAt);
+  // ── Burn + forecast, all in the session window's frame of reference. ──
+  // The local burn bins are indexed from the window start (live reset − 5h when
+  // known). Utilization per token is calibrated from the window's own totals
+  // (live % ÷ tokens logged in the window), so the pace of the last 30 minutes
+  // can be projected in % terms. Falls back to the whole-window average pace
+  // when the window isn't live-aligned or has too little data to calibrate.
+  const BIN_MS = 15 * 60_000;
+  const burnBins = data.burn.length || 20;
+  const burnNow = Math.min(burnBins, Math.max(0, (now - data.session.startedAt) / BIN_MS));
+  let burnSafe = 0; // safe tokens per bin (0 = unknown)
+  let forecast: Forecast | undefined;
+  if (live && !sessionExpired && Number.isFinite(sessionResetT)) {
+    const resetT = sessionResetT;
     const sessionStart = resetT - 5 * 3600 * 1000;
     const elapsed = Math.max(60_000, now - sessionStart);
+    const remaining = Math.max(0, resetT - now);
     const u = real.session!.utilization;
-    if (u >= 1) {
-      forecastLabel = fmtForecast(0);
-      willBust = true;
-    } else if (u > 0) {
-      const msToFull = (elapsed * (1 - u)) / u;
-      forecastLabel = fmtForecast(msToFull / 60000);
-      willBust = msToFull < resetT - now;
+
+    let ratePerMs: number; // utilization per ms
+    let basis: Forecast["basis"];
+    const calibratable = data.session.fromLive && data.session.tokens >= 20_000 && u >= 0.02;
+    if (calibratable) {
+      const uPerToken = u / data.session.tokens;
+      const nowIdx = Math.min(burnBins - 1, Math.floor(burnNow));
+      const fromIdx = Math.max(0, nowIdx - 1); // previous bin + current partial bin ≈ last 30 min
+      const recentTokens = data.burn.slice(fromIdx, nowIdx + 1).reduce((a, b) => a + b, 0);
+      const recentMs = Math.max(60_000, now - (data.session.startedAt + fromIdx * BIN_MS));
+      ratePerMs = (recentTokens / recentMs) * uPerToken;
+      basis = "recent";
+      burnSafe = u < 1 ? (1 - u) / uPerToken / Math.max(1, remaining / BIN_MS) : 0;
+    } else {
+      ratePerMs = u / elapsed;
+      basis = "average";
     }
-    // u <= 0 → no forecast (no burn to project from yet)
+
+    if (u >= 1) {
+      forecast = { basis, willBust: true, label: fmtForecast(0), projectedPct: 100 };
+    } else if (ratePerMs <= 0) {
+      forecast = { basis: "idle", willBust: false, label: "", projectedPct: Math.round(u * 100) };
+    } else {
+      const msToFull = (1 - u) / ratePerMs;
+      forecast = {
+        basis,
+        willBust: msToFull < remaining,
+        label: fmtForecast(msToFull / 60000),
+        projectedPct: Math.round(Math.min(1, u + ratePerMs * remaining) * 100),
+      };
+    }
   }
 
-  // Economics: real-data-driven. extraUsage comes from real.extra.usedCredits
-  // when available; the helper returns 0 / no projection otherwise (no estimate).
-  const econ = computeEconomics(plan, seats, data.month, now, real.extra?.usedCredits);
+  // Economics: real-data-driven. Extra usage is the authoritative dollar figure
+  // from the API when available; the helper returns 0 / no projection otherwise.
+  const econ = computeEconomics(plan, seats, data.month, now, real.extra?.usedDollars);
   const syncedAgo = Math.max(0, Math.floor((now - data.generatedAt) / 1000));
+
+  // Footer: real extra-usage spend this billing month (what Anthropic actually
+  // bills past the plan limits) — not an estimate.
+  const extra = real.found ? real.extra : null;
+  const extraValue = extra ? `$${extra.usedDollars.toFixed(2)}` : "—";
+  const extraLabel = !extra
+    ? "extra usage"
+    : !extra.isEnabled
+      ? "extra usage · off"
+      : extra.limitDollars > 0
+        ? `extra usage · of $${extra.limitDollars.toFixed(0)}`
+        : "extra usage · month";
+  const extraTitle = extra
+    ? `Extra usage billed this month: $${extra.usedDollars.toFixed(2)} ${extra.currency}${extra.limitDollars > 0 ? ` of a $${extra.limitDollars.toFixed(2)} cap` : ""}${extra.disabledReason ? ` · ${extra.disabledReason}` : ""}`
+    : "Extra-usage spend appears here once live data is available";
 
   const togglePin = async () => {
     const next = !pinned;
@@ -135,12 +196,8 @@ export function Widget({
     await win((w) => w.setAlwaysOnTop(next));
   };
 
-  // Hide the Spend tab when expenditures are off; redirect if it was active.
-  const visibleTabs = TABS.filter((t) => t !== "spend" || showSpend);
-  const activeTab: Tab = tab === "spend" && !showSpend ? "overview" : tab;
-
   return (
-    <div ref={winRef} className={`win ${compact ? "compact" : ""}`}>
+    <div ref={winRef} className={`win ${compact ? "compact" : ""} ${settingsOpen ? "settings-open" : ""}`}>
       {/* Title bar — Windows 11 style (drag region) */}
       <div className="titlebar" data-tauri-drag-region>
         <div className="title-left" data-tauri-drag-region>
@@ -153,7 +210,8 @@ export function Widget({
             <b>
               Claude Usage
               {data.isMock && <span className="mock-badge">demo</span>}
-              {live && <span className="live-badge"><span className="live-dot" />live</span>}
+              {live && real.source === "api" && <span className="live-badge"><span className="live-dot" />live</span>}
+              {live && real.source === "cache" && <span className="live-badge cached" title="Showing Claude Code's cached usage"><span className="live-dot" />cached</span>}
             </b>
             <span className="title-sub" title={`${envId || "local"} · synced ${syncedAgo}s ago`}>
               {(account?.orgName || account?.email || envLabel || "Local logs")} · {plan.name}
@@ -164,6 +222,12 @@ export function Widget({
           </div>
         </div>
         <div className="title-right">
+          <button className="chrome-btn tool" title="Settings" onClick={onOpenSettings}>
+            <Icon name="gear" size={13} />
+          </button>
+          <button className="chrome-btn tool" title="Refresh" onClick={onRefresh}>
+            <Icon name="refresh" size={13} />
+          </button>
           <button className={`chrome-btn pin ${pinned ? "on" : ""}`} onClick={togglePin} title="Always on top">
             <Icon name="pin" />
           </button>
@@ -179,43 +243,42 @@ export function Widget({
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="tabs">
-        {visibleTabs.map((id) => (
-          <button key={id} className={`tab ${activeTab === id ? "on" : ""}`} onClick={() => setTab(id)}>
+        {TABS.map((id) => (
+          <button key={id} className={`tab ${tab === id ? "on" : ""}`} onClick={() => onTabChange(id)}>
             {id}
           </button>
         ))}
-        <div className="tab-spacer" />
-        <button className="tab icon-only" title="Settings" onClick={onOpenSettings}>
-          <Icon name="gear" size={13} />
-        </button>
-        <button className="tab icon-only" title="Refresh" onClick={onRefresh}>
-          <Icon name="refresh" size={13} />
-        </button>
       </div>
 
       <div className="body">
-        {activeTab === "overview" && (
-          <OverviewTab
+        {tab === "limits" ? (
+          <Limits attr={attr} loading={attrLoading} />
+        ) : tab === "sessions" ? (
+          <Sessions attr={attr} loading={attrLoading} now={now} />
+        ) : (
+          <Overview
             sessionUsed={sessionUsed}
+            sessionNote={live ? real.session!.note : ""}
             resetIn={resetIn}
             live={live}
+            source={real.source}
+            fetchedAt={real.fetchedAt}
+            now={now}
             realLoading={realLoading}
             unavailableReason={real.reason}
             weeklyRows={weeklyRows}
-            forecastLabel={forecastLabel}
-            willBust={willBust}
+            forecast={forecast}
             models={data.models}
+            sessionFromLive={data.session.fromLive}
             burn={data.burn}
+            burnNow={burnNow}
+            burnSafe={burnSafe}
             econ={econ}
+            extra={real.extra}
             showSpend={showSpend}
           />
         )}
-        {activeTab === "models" && <ModelsTab models={data.models} />}
-        {activeTab === "surfaces" && <SurfacesTab surfaces={data.surfaces} daily={data.daily} />}
-        {activeTab === "spend" && <SpendTab plan={plan} econ={econ} extra={real.extra} />}
-        {activeTab === "history" && <HistoryTab recent={data.recent} heatmap={data.heatmap} />}
       </div>
 
       <div className="footer">
@@ -224,9 +287,9 @@ export function Widget({
           <span className="footer-lbl">tokens today</span>
         </div>
         <div className="footer-divider" />
-        <div className="footer-stat">
-          <span className="footer-num mono">${data.today.cost.toFixed(2)}</span>
-          <span className="footer-lbl">est. cost</span>
+        <div className="footer-stat" title={extraTitle}>
+          <span className={`footer-num mono ${real.extra && real.extra.usedDollars > 0 ? "hot" : ""}`}>{extraValue}</span>
+          <span className="footer-lbl">{extraLabel}</span>
         </div>
         <div className="footer-divider" />
         <div className="footer-stat">
