@@ -123,6 +123,30 @@ npm run tauri build    # produces an installer / executable under src-tauri/targ
 Outputs (Windows): `src-tauri/target/release/claude-usage.exe` (~10 MB) plus an `.msi` and an
 NSIS `-setup.exe` under `src-tauri/target/release/bundle/`.
 
+Outputs (macOS): `src-tauri/target/release/bundle/macos/Claude Usage.app` plus a `.dmg` under
+`src-tauri/target/release/bundle/dmg/`.
+
+### macOS
+
+Prerequisites: the Xcode Command Line Tools (`xcode-select --install`), a Rust toolchain
+(`rustup`, or Homebrew's `rust`), and Node. Then the standard flow works unchanged:
+
+```bash
+npm install
+npm run tauri dev      # launches the widget
+npm run tauri build    # produces Claude Usage.app + a .dmg
+```
+
+The widget lives in the **macOS menu bar** (the tray icons at the top-right of the screen):
+
+- **Left-click** the menu-bar icon to show/hide the widget.
+- **Right-click** for a menu: *Show Claude Usage*, *Hide*, *Quit*.
+- **Closing** the widget window hides it to the menu bar rather than quitting — reopen it from the
+  icon, or choose *Quit* to exit fully.
+
+Translucency uses native macOS vibrancy (Mica is Windows-only). "Launch at startup" in Settings
+registers a macOS `LaunchAgent`.
+
 ### Linux build (from a Windows host, via Docker)
 
 A `Dockerfile.linux-build` ships a `rust:1-bookworm` image with Tauri's Linux deps (webkit2gtk 4.1,

@@ -99,15 +99,34 @@ fn not_found(reason: &str) -> RealUsage {
 
 // ─── Credentials ────────────────────────────────────────────────────────────
 
-/// Read `claudeAiOauth.accessToken` + `expiresAt` from an env's credentials file.
-/// Returns Err (with a reason) if missing or expired.
+/// Read `claudeAiOauth.accessToken` + `expiresAt` from an env's credentials.
+/// On most platforms Claude Code writes `<config_dir>/.credentials.json`; on
+/// macOS the default account's credentials live in the login Keychain instead
+/// (service "Claude Code-credentials"), so we fall back to that. Returns Err
+/// (with a reason) if missing or expired.
 fn load_valid_token(config_dir: &Path) -> Result<String, String> {
     let path = config_dir.join(".credentials.json");
-    if !path.exists() {
-        return Err("no credentials for this account".into());
+    if path.exists() {
+        let content =
+            std::fs::read_to_string(&path).map_err(|_| "can't read credentials".to_string())?;
+        return parse_token(&content);
     }
-    let content = std::fs::read_to_string(&path).map_err(|_| "can't read credentials".to_string())?;
-    let v: Value = serde_json::from_str(&content).map_err(|_| "bad credentials json".to_string())?;
+    // macOS: the default `~/.claude` account keeps its OAuth token in the
+    // Keychain, not on disk. Custom config dirs still expect a file, so we only
+    // consult the Keychain for the default account (avoids handing back the
+    // wrong account's token).
+    #[cfg(target_os = "macos")]
+    {
+        if is_default_config_dir(config_dir) {
+            return load_token_from_keychain();
+        }
+    }
+    Err("no credentials for this account".into())
+}
+
+/// Parse and validate a credentials JSON blob (from a file or the Keychain).
+fn parse_token(content: &str) -> Result<String, String> {
+    let v: Value = serde_json::from_str(content).map_err(|_| "bad credentials json".to_string())?;
     let oauth = v.get("claudeAiOauth").ok_or("no oauth in credentials")?;
     let token = oauth
         .get("accessToken")
@@ -121,6 +140,32 @@ fn load_valid_token(config_dir: &Path) -> Result<String, String> {
         }
     }
     Ok(token)
+}
+
+/// True if `config_dir` is the default `~/.claude` (the account whose token
+/// Claude Code stores in the macOS Keychain).
+#[cfg(target_os = "macos")]
+fn is_default_config_dir(config_dir: &Path) -> bool {
+    dirs::home_dir()
+        .map(|h| h.join(".claude") == config_dir)
+        .unwrap_or(false)
+}
+
+/// Read the credentials JSON that Claude Code stores in the macOS login
+/// Keychain (service "Claude Code-credentials"). The first access prompts the
+/// user to allow the widget to read the item.
+#[cfg(target_os = "macos")]
+fn load_token_from_keychain() -> Result<String, String> {
+    use std::process::Command;
+    let out = Command::new("/usr/bin/security")
+        .args(["find-generic-password", "-s", "Claude Code-credentials", "-w"])
+        .output()
+        .map_err(|e| format!("keychain read failed: {e}"))?;
+    if !out.status.success() {
+        return Err("no credentials in Keychain — sign in with Claude Code".into());
+    }
+    let content = String::from_utf8_lossy(&out.stdout);
+    parse_token(content.trim())
 }
 
 // ─── Claude Code's account file: cached usage + promo notices ────────────────

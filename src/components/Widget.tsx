@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icon";
 import { Overview, type Forecast, type WeeklyRow } from "./Overview";
 import { Limits } from "./Limits";
@@ -12,6 +13,24 @@ import { computeEconomics, type PlanDef } from "../lib/plans";
 async function win<T>(fn: (w: ReturnType<typeof getCurrentWindow>) => Promise<T>) {
   try {
     await fn(getCurrentWindow());
+  } catch {
+    /* not running under Tauri */
+  }
+}
+
+// Pin state persists across hide/show and restarts; off by default.
+const PIN_KEY = "cu:pinned";
+function loadPinned(): boolean {
+  try {
+    return localStorage.getItem(PIN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+// Tell the backend whether click-outside should dismiss the popover.
+async function applyPinned(pinned: boolean) {
+  try {
+    await invoke("set_pinned", { pinned });
   } catch {
     /* not running under Tauri */
   }
@@ -62,13 +81,20 @@ export function Widget({
   onOpenSettings: () => void;
   onRefresh: () => void;
 }) {
-  const [pinned, setPinned] = useState(true);
+  const [pinned, setPinned] = useState(loadPinned);
   const [now, setNow] = useState(Date.now());
   const winRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
+  }, []);
+
+  // Sync the persisted pin state to the backend on mount so click-outside
+  // behavior matches what the user last chose.
+  useEffect(() => {
+    applyPinned(pinned);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-fit the OS window to the widget's content height so it never scrolls.
@@ -193,7 +219,12 @@ export function Widget({
   const togglePin = async () => {
     const next = !pinned;
     setPinned(next);
-    await win((w) => w.setAlwaysOnTop(next));
+    try {
+      localStorage.setItem(PIN_KEY, next ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+    await applyPinned(next);
   };
 
   return (
@@ -228,7 +259,7 @@ export function Widget({
           <button className="chrome-btn tool" title="Refresh" onClick={onRefresh}>
             <Icon name="refresh" size={13} />
           </button>
-          <button className={`chrome-btn pin ${pinned ? "on" : ""}`} onClick={togglePin} title="Always on top">
+          <button className={`chrome-btn pin ${pinned ? "on" : ""}`} onClick={togglePin} title={pinned ? "Pinned — stays open (click to unpin)" : "Pin — keep open when clicking away"}>
             <Icon name="pin" />
           </button>
           <button className="chrome-btn" title="Minimize" onClick={() => win((w) => w.minimize())}>
