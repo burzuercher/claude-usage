@@ -32,7 +32,8 @@
     ],
     "security": {
       "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src ipc: http://ipc.localhost"
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,
