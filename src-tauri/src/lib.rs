@@ -32,9 +32,15 @@ fn now_ms() -> i64 {
 /// `session_start_ms` is the live session window start (reset − 5h) when the
 /// frontend knows it, so the per-model split lines up with the ring.
 #[tauri::command]
-fn get_usage(env_id: Option<String>, session_start_ms: Option<i64>) -> usage::UsageData {
-    let id = env_id.unwrap_or_default();
-    usage::collect_at(env::projects_dir_for(&id), session_start_ms)
+async fn get_usage(env_id: Option<String>, session_start_ms: Option<i64>) -> usage::UsageData {
+    // Scanning the transcript logs is heavy blocking I/O; run it off the main
+    // thread (and off the async reactor) so the UI never freezes while it runs.
+    tauri::async_runtime::spawn_blocking(move || {
+        let id = env_id.unwrap_or_default();
+        usage::collect_at(env::projects_dir_for(&id), session_start_ms)
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// Local attribution for the "what's contributing to your limits" view: which
@@ -42,9 +48,14 @@ fn get_usage(env_id: Option<String>, session_start_ms: Option<i64>) -> usage::Us
 /// per-session accounting. Machine-local and approximate, exactly as Claude
 /// Code's own /usage screen is.
 #[tauri::command]
-fn get_attribution(env_id: Option<String>) -> attribution::Attribution {
-    let id = env_id.unwrap_or_default();
-    attribution::collect_at(env::projects_dir_for(&id))
+async fn get_attribution(env_id: Option<String>) -> attribution::Attribution {
+    // Same heavy transcript scan as get_usage — keep it off the main thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let id = env_id.unwrap_or_default();
+        attribution::collect_at(env::projects_dir_for(&id))
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// List discovered Claude environments (separate `~/.claude*` config dirs).
