@@ -3,7 +3,8 @@ import { Ring } from "./Ring";
 import { StackedBar } from "./StackedBar";
 import { BurnSpark } from "./BurnSpark";
 import { Icon } from "./Icon";
-import { fmtAgo } from "../lib/format";
+import { fmtAgo, fmtPct, fmtResetAbsolute, fmtSpan } from "../lib/format";
+import type { Forecast, WeeklyPace } from "../lib/pace";
 import { MODEL_COLOR, type ExtraUsage, type ModelStat, type RealSource } from "../lib/types";
 import type { Economics } from "../lib/plans";
 
@@ -15,15 +16,7 @@ export interface WeeklyRow {
   active: boolean; // server says this window is the binding one
 }
 
-export interface Forecast {
-  /** "recent" = last-30-min token burn calibrated to live %; "average" = whole-window average; "idle" = no recent activity. */
-  basis: "recent" | "average" | "idle";
-  willBust: boolean;
-  /** Time until 100% at this pace ("1h 24m", "8h+"), "" when idle. */
-  label: string;
-  /** Projected utilization at reset, 0..100. */
-  projectedPct: number;
-}
+export type { Forecast };
 
 export interface OverviewProps {
   /** Real session utilization (0..1) from /api/oauth/usage, undefined when unavailable. */
@@ -43,6 +36,8 @@ export interface OverviewProps {
   unavailableReason?: string;
   weeklyRows: WeeklyRow[]; // empty when no live data
   forecast?: Forecast;
+  /** Daily pace against the "All models" weekly limit. */
+  weeklyPace?: WeeklyPace;
   models: ModelStat[];
   /** True when the model split / burn window came from the live reset time. */
   sessionFromLive: boolean;
@@ -91,6 +86,37 @@ function AnimatedWeekly({ row, ink }: { row: WeeklyRow; ink: boolean }) {
         <span className="mono">{row.foot}</span>
       </div>
     </div>
+  );
+}
+
+const WEEKLY_PACE_HELP =
+  "What a whole day at this rate means for the 7-day limit. The last 24h of usage on this machine is " +
+  "scaled to the live weekly %, then projected to the reset. Budget is the daily share that lands exactly at 100% at reset.";
+
+/** One-line daily pace for the weekly limit, shared by the widget and the iTerm2 panel. */
+export function WeeklyPaceText({ pace }: { pace: WeeklyPace }) {
+  if (pace.basis === "early") {
+    return (
+      <span>
+        Week reset {fmtSpan(pace.sinceStart)} ago · <b className="mono">{fmtPct(pace.perDay)}</b> used so far · budget{" "}
+        <b className="mono">{fmtPct(pace.budgetPerDay)}/day</b>
+      </span>
+    );
+  }
+  return (
+    <span>
+      {pace.basis === "day" ? "Last 24h" : "Weekly average"}: <b className="mono">{fmtPct(pace.perDay)}/day</b> of the week
+      {" "}(budget {fmtPct(pace.budgetPerDay)}/day) ·{" "}
+      {pace.willBust ? (
+        <>
+          you'll <b>hit the cap {fmtResetAbsolute(new Date(pace.capAt).toISOString())}</b>
+        </>
+      ) : (
+        <>
+          ~<b className="mono">{pace.projectedPct}%</b> at reset
+        </>
+      )}
+    </span>
   );
 }
 
@@ -144,6 +170,13 @@ export function Overview(p: OverviewProps) {
               {p.weeklyRows.map((r, i) => (
                 <AnimatedWeekly key={r.label} row={r} ink={i > 0 && !r.active} />
               ))}
+            </div>
+          )}
+
+          {p.weeklyPace && (
+            <div className={`forecast ${p.weeklyPace.willBust ? "warn" : ""}`} title={WEEKLY_PACE_HELP}>
+              <Icon name="spark" size={13} />
+              <WeeklyPaceText pace={p.weeklyPace} />
             </div>
           )}
 

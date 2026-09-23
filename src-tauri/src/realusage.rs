@@ -69,7 +69,7 @@ pub struct ExtraUsage {
     pub can_purchase_credits: bool,
 }
 
-#[derive(Serialize, Default, Debug)]
+#[derive(Serialize, Default, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RealUsage {
     pub found: bool,
@@ -822,7 +822,7 @@ mod tests {
         let env_id = std::env::var("CLAUDE_USAGE_SMOKE_ENV").unwrap_or_else(|_| ".claude".into());
         let u = tauri::async_runtime::block_on(fetch(&env_id));
         println!("{}", serde_json::to_string_pretty(&u).unwrap());
-        let d = crate::usage::collect_at(env::projects_dir_for(&env_id), None);
+        let d = crate::usage::collect_at(env::projects_dir_for(&env_id), None, None);
         println!("local: is_mock={} today.cost=${:.2} today.prompts={} models={}", d.is_mock, d.today.cost, d.today.prompts,
             d.models.iter().map(|m| format!("{}:{}tok/${:.2}", m.id, m.tokens, m.cost)).collect::<Vec<_>>().join(" "));
     }

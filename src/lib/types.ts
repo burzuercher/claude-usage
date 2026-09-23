@@ -28,6 +28,14 @@ export interface ModelStat {
   prompts: number;
 }
 
+/** Weekly-window totals for the daily pace (estimated cost is the weight; only the ratio is used). */
+export interface Week {
+  startedAt: number; // ms epoch — weekly window start
+  fromLive: boolean; // true when the start came from the live weekly reset (reset − 7d)
+  cost: number; // over the whole weekly window
+  cost24h: number; // over the trailing 24h (clamped to the window start)
+}
+
 export interface UsageData {
   isMock: boolean;
   generatedAt: number;
@@ -38,6 +46,7 @@ export interface UsageData {
   models: ModelStat[];
   /** Tokens per 15-min bin across the session window (20 bins = 5h), from the window start. */
   burn: number[];
+  week: Week;
 }
 
 // ─── Settings ──────────────────────────────────────────────────────────────

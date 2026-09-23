@@ -22,6 +22,13 @@ Implemented from a [Claude Design](https://claude.ai/design) handoff (`Claude Us
   extra-usage spend + month-end projection). The **pace forecast** projects the last 30 minutes of
   burn — calibrated to the live % via the window's own token total — to a time-to-cap or a
   projected % at reset (falling back to the session's average pace when there's too little data).
+  Under the weekly bars, a **daily pace** does the same for the week, over a whole day rather than
+  the last half hour: the last 24h of usage (estimated cost, which weights model tier and token type
+  the way limits do), scaled to the live "All models" weekly %, gives a **%/day**, shown against the
+  **budget** (%/day that lands exactly at 100% at reset) and projected to a cap time or a % at reset.
+  In the window's first day it shows only the share used since reset and the budget. Falls back to
+  the window's average per day when local logs can't be lined up with the live window. The daily
+  pace assumes this machine's share of your usage stays steady; per-model bars get no pace.
 - **Limits** — the other half of Claude Code's own `/usage` screen, which the usage API doesn't
   serve: **what's contributing to your limits usage**. Overlapping behaviors (usage at >150k
   context, >100k-token cache misses, subagent-heavy sessions, 4+ sessions in parallel, sessions
@@ -106,6 +113,74 @@ response is available, the ring is replaced by an explanation of why.
 - The **session cost** on the Sessions tab is Claude Code's own `totalCostUSD`, so it reflects real
   billing rather than the price table below.
 - If no logs are found, the widget shows bundled demo data (a `demo` badge appears in the title).
+
+## iTerm2 toolbelt panel (macOS)
+
+The same limits, sized for iTerm2's toolbelt, the sidebar that holds iTerm2's **Session Status**:
+session % with reset time and 30-minute pace, each weekly bar with its reset, the daily pace for the
+week, and extra-usage spend. It follows the macOS light/dark appearance.
+
+The app serves the panel at `http://127.0.0.1:47821/panel` (loopback only; set
+`CLAUDE_USAGE_PANEL_PORT` to change the port, and the iTerm2 script reads the same variable). A small
+iTerm2 script registers that URL as a toolbelt tool. The panel reads the data the widget already
+polls, so it adds **no usage-API requests** of its own; it shows whichever account the widget has
+selected. It only fetches for itself if the widget has stopped polling for more than 5.5 minutes.
+
+### Setup
+
+Requirements: iTerm2 3.3 or later (custom toolbelt tools), and a Claude Usage build that includes
+the panel server. Older builds of the app don't serve the panel.
+
+1. **Build and install the app.** Quit any running copy (menu-bar icon > Quit), then:
+
+   ```bash
+   npm install
+   npm run tauri build -- --bundles app
+   rm -rf "/Applications/Claude Usage.app"
+   cp -R "src-tauri/target/release/bundle/macos/Claude Usage.app" /Applications/
+   open "/Applications/Claude Usage.app"
+   ```
+
+   Check that the panel server is up. This should print JSON with `"found":true` in `real`:
+
+   ```bash
+   curl -s http://127.0.0.1:47821/api/snapshot | head -c 300
+   ```
+
+2. **Enable iTerm2's Python API:** **Settings > General > Magic > Enable Python API**.
+3. **Install iTerm2's Python runtime:** **Scripts > Manage > Install Python Runtime**. This is a
+   separate, one-time download. Enabling the API doesn't install it, and AutoLaunch scripts don't
+   run without it. If `~/Library/Application Support/iTerm2/iterm2env*` exists, it's installed.
+4. **Link the script:** run `integrations/iterm2/install.sh`. It links `claude_usage_panel.py`
+   into `~/Library/Application Support/iTerm2/Scripts/AutoLaunch`, so the panel is registered every
+   time iTerm2 starts. The link points into this checkout, so keep the repo where it is (or run
+   the installer again after moving it).
+5. **Start the script** without restarting iTerm2: **Scripts > AutoLaunch > claude_usage_panel.py**.
+6. **Show the panel:** **View > Toolbelt > Claude Usage**. It stacks with the other toolbelt tools,
+   so it can sit above or below Session Status. Drag the divider to resize it.
+
+The app has to be running for the panel to show data. If it isn't listening when the script
+starts, the script launches it in the background (`open -g -b com.phase2online.claude-usage`).
+Turn on **Launch at startup** in the widget's settings to keep it available.
+
+### Troubleshooting
+
+- **"Claude Usage" isn't in View > Toolbelt.** The script isn't running. Open **Scripts > Manage >
+  Console** and select `claude_usage_panel.py` to see its output. A missing Python runtime (step 3)
+  is the usual cause.
+- **The panel is blank or says it can't connect.** The app isn't serving. Check that it's running
+  and that `curl http://127.0.0.1:47821/panel` returns HTML. If port 47821 is taken, set
+  `CLAUDE_USAGE_PANEL_PORT` for both the app and iTerm2 (for example with
+  `launchctl setenv CLAUDE_USAGE_PANEL_PORT 47822`, then restart both).
+- **"Live limits aren't available".** The panel shows the account the widget has selected, with the
+  same reason the widget gives (not signed in, token expired, and so on). Fix it in the widget.
+- **The numbers are behind the widget.** The panel refreshes every 30 seconds, from data the widget
+  polls about every 2 minutes. The dot and age in the panel's header turn amber after 10 minutes
+  without new data.
+
+Developing the panel: `npm run build` refreshes what a debug build serves (it reads `dist/` from
+disk). For hot reload, open `http://localhost:1420/panel.html?api=http://127.0.0.1:47821` while
+`npm run tauri dev` runs; debug builds allow that origin to read the API.
 
 ## Develop
 
@@ -193,10 +268,13 @@ dependency on your real `~/.claude` logs).
   - `hooks/` — `useUsage` (polls local logs every 30s) & `useRealUsage` (live limits every 2 min with
     429 backoff), `useAttribution` (local attribution every 60s, only while its tab is open),
     `useEnvironments`, `useCountUp`
-  - `lib/` — `types`, `plans` (subscription prices + `computeEconomics`), `format`, `mockData`, `settings`
+  - `lib/` — `types`, `plans` (subscription prices + `computeEconomics`), `pace` (session and daily
+    pace, shared with the panel), `format`, `mockData`, `settings`
+  - `panel/` — the iTerm2 toolbelt panel (`panel.html` entry); reads `/api/snapshot` over HTTP
+- `integrations/iterm2/` — the iTerm2 AutoLaunch script that registers the panel, and its installer
 - `src-tauri/src/` — Rust backend
   - `usage.rs` — walks & parses the logs, de-dups on `(requestId, message.id)`, aggregates
-    (session window / today / month / per-model split / burn)
+    (session window / today / month / per-model split / burn / weekly-window cost + last 24h)
   - `attribution.rs` — the `/usage` attribution algorithm (behaviors + skill / subagent / MCP /
     plugin shares over 24h and 7d) and per-session accounting from `cost-state` records
   - `pricing.rs` — version-aware per-model token pricing (Fable / Opus / Sonnet / Haiku)
@@ -204,6 +282,9 @@ dependency on your real `~/.claude` logs).
   - `env.rs` — discovers `~/.claude*` environments and resolves a chosen one (or a custom path)
   - `realusage.rs` — authoritative limits / extra-usage from `GET /api/oauth/usage` (runtime token),
     Claude Code's cached copy as fallback, and promo-notice flags
+  - `hub.rs` — shared memo of the latest limits and local aggregation, so the widget and the panel
+    use one poller (and a just-fetched result is reused instead of spending another request)
+  - `panel.rs` — loopback HTTP server for the iTerm2 panel (`/panel`, its assets, `/api/snapshot`)
   - `lib.rs` — `get_usage` / `get_attribution` / `get_account` / `get_real_usage` /
     `list_environments` / `set_window_theme`
     commands + theme-matched Mica/vibrancy setup

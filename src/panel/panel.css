@@ -1,0 +1,71 @@
+/* iTerm2 toolbelt panel. Sized for a narrow sidebar and styled to sit next to
+   iTerm's own Session Status tool: system font, small type, follows the macOS
+   light/dark appearance. */
+
+:root {
+  --p-bg: #f5f5f4;
+  --p-fg: #1d1d1f;
+  --p-muted: #6e6e73;
+  --p-line: rgba(0, 0, 0, 0.08);
+  --p-track: rgba(0, 0, 0, 0.08);
+  --p-clay: #d97757;
+  --p-amber: #c68b36;
+  --p-ember: #b14a2c;
+  --p-live: #34a853;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --p-bg: #1e1e1e;
+    --p-fg: #e8e8e8;
+    --p-muted: #9a9a9f;
+    --p-line: rgba(255, 255, 255, 0.08);
+    --p-track: rgba(255, 255, 255, 0.10);
+    --p-clay: #e08868;
+    --p-amber: #d9a350;
+    --p-ember: #e0694a;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--p-bg);
+  color: var(--p-fg);
+  font: 11px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  overflow-x: hidden;
+}
+
+.p-root { padding: 6px 8px 10px; }
+.p-mono { font-variant-numeric: tabular-nums; }
+
+.p-title { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.p-name { font-weight: 600; font-size: 11.5px; }
+.p-status { display: inline-flex; align-items: center; gap: 4px; color: var(--p-muted); font-size: 10px; white-space: nowrap; }
+.p-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--p-live); }
+.p-status.stale { color: var(--p-amber); }
+.p-status.stale .p-dot { background: var(--p-amber); }
+.p-sub { color: var(--p-muted); font-size: 10px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.p-block { padding: 8px 0 0; margin-top: 8px; border-top: 0.5px solid var(--p-line); }
+.p-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.p-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-pct { font-weight: 600; font-size: 12px; }
+
+.p-bar { height: 5px; border-radius: 3px; background: var(--p-track); margin: 4px 0 3px; overflow: hidden; }
+.p-fill { height: 100%; border-radius: 3px; background: var(--p-clay); transition: width 0.6s ease; }
+.p-fill.warm { background: var(--p-amber); }
+.p-fill.hot { background: var(--p-ember); }
+
+.p-foot { display: flex; justify-content: space-between; gap: 6px; color: var(--p-muted); font-size: 10px; }
+.p-note { color: var(--p-muted); font-size: 10px; font-style: italic; margin-top: 2px; }
+
+.p-kv { display: flex; justify-content: space-between; gap: 6px; margin-top: 3px; color: var(--p-muted); }
+.p-kv > span:last-child { color: var(--p-fg); text-align: right; white-space: nowrap; }
+.p-kv.warn > span:last-child { color: var(--p-ember); font-weight: 600; }
+
+.p-empty { color: var(--p-muted); padding: 10px 0; }

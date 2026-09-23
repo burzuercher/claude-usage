@@ -9,7 +9,9 @@
 //! Usage *limits* (ring, weekly bars) come from Anthropic's usage API, not from
 //! here — this module supplies the factual local data: tokens, estimated cost,
 //! and, for the current session window, the per-model split and the token burn
-//! per 15-minute bin (the sparkline + the pace forecast).
+//! per 15-minute bin (the sparkline + the pace forecast). For the weekly window
+//! it supplies the estimated cost over the whole window and the trailing 24h,
+//! which the frontend uses to turn the live weekly % into a daily pace.
 
 use chrono::{DateTime, Datelike, Local, TimeZone, Utc};
 use serde::Serialize;
@@ -19,10 +21,12 @@ use walkdir::WalkDir;
 use crate::pricing::{turn_cost, Family};
 
 const FIVE_HOURS: i64 = 5 * 3600;
+const SEVEN_DAYS_MS: i64 = 7 * 24 * 3600 * 1000;
+const DAY_MS: i64 = 24 * 3600 * 1000;
 
 // ─── Output shapes (camelCase for the frontend) ────────────────────────────
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageData {
     pub is_mock: bool,
@@ -37,9 +41,28 @@ pub struct UsageData {
     /// Tokens per 15-minute bin across the session window (20 bins = 5h),
     /// indexed from the window start; bins after "now" are still 0.
     pub burn: Vec<u64>,
+    /// Weekly-window totals for the daily pace.
+    pub week: Week,
 }
 
-#[derive(Serialize, Default)]
+/// Estimated cost over the weekly window and its trailing 24 hours. Cost is the
+/// weight because it tracks what limits meter: it scales with model tier and
+/// token type exactly like Claude Code's own attribution weighting (cache read
+/// 1x, input 10x, cache write 12.5x, output 50x, times the model tier). Only
+/// the *ratio* is used — the live weekly % supplies the scale.
+#[derive(Serialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Week {
+    /// ms epoch when the weekly window started.
+    pub started_at: i64,
+    /// True when the window start came from the live usage API (reset − 7d).
+    pub from_live: bool,
+    pub cost: f64,
+    /// Cost of turns in the last 24h (clamped to the window start).
+    pub cost_24h: f64,
+}
+
+#[derive(Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Window {
     /// ms epoch when the current session window started.
@@ -50,7 +73,7 @@ pub struct Window {
     pub tokens: u64,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Today {
     pub tokens: u64,
@@ -58,7 +81,7 @@ pub struct Today {
     pub prompts: u32,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Month {
     /// ms epoch of the first day of the current calendar month (local).
@@ -68,7 +91,7 @@ pub struct Month {
     pub prompts: u32,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelStat {
     pub id: String,   // "fable" | "opus" | "sonnet" | "haiku" | "other"
@@ -100,15 +123,21 @@ fn logs_root() -> Option<std::path::PathBuf> {
 /// the smoke test; the app drives `collect_at` with a chosen environment.
 #[allow(dead_code)]
 pub fn collect() -> UsageData {
-    collect_at(logs_root(), None)
+    collect_at(logs_root(), None, None)
 }
 
 /// Walk a specific `projects/` directory and build the full UsageData.
 ///
 /// `session_start_ms` is the live session window start (reset time − 5h) when
 /// the frontend has it; otherwise we fall back to a ccusage-style local 5-hour
-/// block. Returns a mock-flagged empty struct when there is nothing to read.
-pub fn collect_at(root: Option<std::path::PathBuf>, session_start_ms: Option<i64>) -> UsageData {
+/// block. `week_start_ms` is likewise the live weekly window start (reset −
+/// 7d), falling back to the last 7 days. Returns a mock-flagged empty struct
+/// when there is nothing to read.
+pub fn collect_at(
+    root: Option<std::path::PathBuf>,
+    session_start_ms: Option<i64>,
+    week_start_ms: Option<i64>,
+) -> UsageData {
     let root = match root {
         Some(r) if r.exists() => r,
         _ => return empty_mock(),
@@ -187,7 +216,7 @@ pub fn collect_at(root: Option<std::path::PathBuf>, session_start_ms: Option<i64
     }
 
     turns.sort_by_key(|t| t.ts);
-    aggregate(turns, session_start_ms, now)
+    aggregate(turns, session_start_ms, week_start_ms, now)
 }
 
 /// Total token movement and estimated cost for one turn's `usage` object.
@@ -217,7 +246,12 @@ fn turn_tokens_and_cost(model: &str, usage: &serde_json::Value) -> (u64, f64) {
     (input + output + cache_w_total + cache_r, cost)
 }
 
-fn aggregate(turns: Vec<Turn>, session_start_ms: Option<i64>, now: DateTime<Utc>) -> UsageData {
+fn aggregate(
+    turns: Vec<Turn>,
+    session_start_ms: Option<i64>,
+    week_start_ms: Option<i64>,
+    now: DateTime<Utc>,
+) -> UsageData {
     let now_local = Local::now();
     let today_local = now_local.date_naive();
     let month_start = Local
@@ -262,6 +296,13 @@ fn aggregate(turns: Vec<Turn>, session_start_ms: Option<i64>, now: DateTime<Utc>
     let mut month = Month { started_at: month_start, ..Default::default() };
     let mut model_map: HashMap<Family, ModelStat> = HashMap::new();
     let mut burn = vec![0u64; 20];
+    let now_ms = now.timestamp_millis();
+    let mut week = Week {
+        started_at: week_start_ms.unwrap_or(now_ms - SEVEN_DAYS_MS),
+        from_live: week_start_ms.is_some(),
+        ..Default::default()
+    };
+    let day_start = (now_ms - DAY_MS).max(week.started_at);
 
     for t in &turns {
         // session window: totals, per-model split, and 15-min burn bins
@@ -296,6 +337,14 @@ fn aggregate(turns: Vec<Turn>, session_start_ms: Option<i64>, now: DateTime<Utc>
             month.prompts += 1;
         }
 
+        // weekly window + its trailing 24h (for the daily pace)
+        let ts_ms = t.ts.timestamp_millis();
+        if ts_ms >= week.started_at {
+            week.cost += t.cost;
+            if ts_ms >= day_start {
+                week.cost_24h += t.cost;
+            }
+        }
     }
 
     // ── models: drop empty buckets, stable order fable/opus/sonnet/haiku/other ──
@@ -314,6 +363,7 @@ fn aggregate(turns: Vec<Turn>, session_start_ms: Option<i64>, now: DateTime<Utc>
         month,
         models,
         burn,
+        week,
     }
 }
 
@@ -375,7 +425,7 @@ mod tests {
     fn aggregates_dedups_and_prices_by_model() {
         let dir = temp_subdir("agg");
         write_fixture(&dir);
-        let u = collect_at(Some(dir.clone()), None);
+        let u = collect_at(Some(dir.clone()), None, None);
         let _ = std::fs::remove_dir_all(&dir);
 
         assert!(!u.is_mock);
@@ -407,7 +457,7 @@ mod tests {
         write_fixture(&dir);
         // Window starting 1 minute ago → only the two "now" turns.
         let start = Utc::now().timestamp_millis() - 60_000;
-        let u = collect_at(Some(dir.clone()), Some(start));
+        let u = collect_at(Some(dir.clone()), Some(start), None);
         assert!(u.session.from_live);
         assert_eq!(u.session.started_at, start);
         assert_eq!(u.session.prompts, 2);
@@ -418,7 +468,7 @@ mod tests {
 
         // Window starting 10 hours ago → the old opus turn is included too.
         let start = Utc::now().timestamp_millis() - 10 * 3600 * 1000;
-        let u = collect_at(Some(dir.clone()), Some(start));
+        let u = collect_at(Some(dir.clone()), Some(start), None);
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(u.session.prompts, 3);
         assert_eq!(u.models.iter().find(|m| m.id == "opus").unwrap().prompts, 2);
@@ -430,7 +480,7 @@ mod tests {
         let old = (Utc::now() - Duration::hours(9)).to_rfc3339();
         let mut f = std::fs::File::create(dir.join("s.jsonl")).unwrap();
         writeln!(f, r#"{{"type":"assistant","timestamp":"{old}","requestId":"r0","message":{{"id":"m0","model":"claude-opus-5","usage":{{"input_tokens":5,"output_tokens":5}}}}}}"#).unwrap();
-        let u = collect_at(Some(dir.clone()), None);
+        let u = collect_at(Some(dir.clone()), None, None);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(!u.is_mock);
         assert_eq!(u.session.prompts, 0);
@@ -440,7 +490,7 @@ mod tests {
         let dir = temp_subdir("idle2");
         let mut f = std::fs::File::create(dir.join("s.jsonl")).unwrap();
         writeln!(f, r#"{{"type":"assistant","timestamp":"{old}","requestId":"r0","message":{{"id":"m0","model":"claude-opus-5","usage":{{"input_tokens":5,"output_tokens":5}}}}}}"#).unwrap();
-        let u = collect_at(Some(dir.clone()), Some(Utc::now().timestamp_millis() - 10 * 3600 * 1000));
+        let u = collect_at(Some(dir.clone()), Some(Utc::now().timestamp_millis() - 10 * 3600 * 1000), None);
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(u.session.prompts, 1);
     }
@@ -460,9 +510,36 @@ mod tests {
     }
 
     #[test]
+    fn week_totals_split_the_trailing_day() {
+        let dir = temp_subdir("week");
+        let now = Utc::now();
+        let mut f = std::fs::File::create(dir.join("s.jsonl")).unwrap();
+        // 1M input tokens of Opus 5 = $5 each; turns 1h, 30h and 9 days ago.
+        for (i, hours) in [1i64, 30, 9 * 24].iter().enumerate() {
+            let ts = (now - Duration::hours(*hours)).to_rfc3339();
+            writeln!(f, r#"{{"type":"assistant","timestamp":"{ts}","requestId":"r{i}","message":{{"id":"m{i}","model":"claude-opus-5","usage":{{"input_tokens":1000000,"output_tokens":0}}}}}}"#).unwrap();
+        }
+
+        // No live window: the last 7 days → the 1h and 30h turns.
+        let u = collect_at(Some(dir.clone()), None, None);
+        assert!(!u.week.from_live);
+        assert!(close(u.week.cost, 10.0), "week cost {}", u.week.cost);
+        assert!(close(u.week.cost_24h, 5.0), "24h cost {}", u.week.cost_24h);
+
+        // Live window that started 2h ago: the trailing day is clamped to it.
+        let start = now.timestamp_millis() - 2 * 3600 * 1000;
+        let u = collect_at(Some(dir.clone()), None, Some(start));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(u.week.from_live);
+        assert_eq!(u.week.started_at, start);
+        assert!(close(u.week.cost, 5.0));
+        assert!(close(u.week.cost_24h, 5.0));
+    }
+
+    #[test]
     fn empty_dir_returns_mock_flag() {
         let dir = temp_subdir("empty");
-        let u = collect_at(Some(dir.clone()), None);
+        let u = collect_at(Some(dir.clone()), None, None);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(u.is_mock);
     }

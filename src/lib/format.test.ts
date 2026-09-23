@@ -8,6 +8,8 @@ import {
   fmtResetAbsolute,
   fmtAgo,
   clamp01,
+  fmtPct,
+  fmtSpan,
 } from "./format";
 
 describe("fmtNum", () => {
@@ -96,5 +98,20 @@ describe("fmtAgo", () => {
   });
   it("returns empty for a missing timestamp", () => {
     expect(fmtAgo(0, now)).toBe("");
+  });
+});
+
+describe("fmtPct", () => {
+  it("rounds shares and marks slivers", () => {
+    expect(fmtPct(0.144)).toBe("14%");
+    expect(fmtPct(0.004)).toBe("<1%");
+    expect(fmtPct(0)).toBe("0%");
+  });
+});
+
+describe("fmtSpan", () => {
+  it("switches to days past 24h", () => {
+    expect(fmtSpan(52 * 3_600_000)).toBe("2d 4h");
+    expect(fmtSpan(5 * 3_600_000 + 12 * 60_000)).toBe("5h 12m");
   });
 });
