@@ -8,6 +8,7 @@ import { useRealUsage } from "./hooks/useRealUsage";
 import { useAttribution } from "./hooks/useAttribution";
 import { useEnvironments } from "./hooks/useEnvironments";
 import { PLANS } from "./lib/plans";
+import { allModelsBucket } from "./lib/pace";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settings";
 import type { PlanTier, Settings } from "./lib/types";
 
@@ -60,7 +61,14 @@ export default function App() {
     return Number.isNaN(t) ? undefined : t - 5 * 3600 * 1000;
   }, [real.found, real.session?.resetsAt]);
 
-  const { data, refresh } = useUsage(selectedEnvId, sessionStartMs);
+  // Likewise the weekly totals behind the daily pace: the "All models" window (reset − 7d).
+  const weekResetIso = allModelsBucket(real)?.resetsAt ?? "";
+  const weekStartMs = useMemo(() => {
+    const t = weekResetIso ? Date.parse(weekResetIso) : NaN;
+    return Number.isNaN(t) ? undefined : t - 7 * 86_400_000;
+  }, [weekResetIso]);
+
+  const { data, refresh } = useUsage(selectedEnvId, sessionStartMs, weekStartMs);
 
   // Local attribution backs the Limits and Sessions tabs. Scanning reads every
   // transcript touched in the last 7 days, so it only runs while one is open.

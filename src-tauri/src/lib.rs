@@ -1,6 +1,8 @@
 mod account;
 mod attribution;
 mod env;
+mod hub;
+mod panel;
 mod pricing;
 mod realusage;
 mod usage;
@@ -29,15 +31,24 @@ fn now_ms() -> i64 {
 }
 
 /// Aggregate usage from a specific environment's logs (defaults to `.claude`).
-/// `session_start_ms` is the live session window start (reset − 5h) when the
-/// frontend knows it, so the per-model split lines up with the ring.
+/// `session_start_ms` / `week_start_ms` are the live session (reset − 5h) and
+/// weekly (reset − 7d) window starts when the frontend knows them, so the
+/// per-model split lines up with the ring and the daily pace with the weekly bar.
 #[tauri::command]
-async fn get_usage(env_id: Option<String>, session_start_ms: Option<i64>) -> usage::UsageData {
+async fn get_usage(
+    app: tauri::AppHandle,
+    env_id: Option<String>,
+    session_start_ms: Option<i64>,
+    week_start_ms: Option<i64>,
+) -> usage::UsageData {
     // Scanning the transcript logs is heavy blocking I/O; run it off the main
     // thread (and off the async reactor) so the UI never freezes while it runs.
     tauri::async_runtime::spawn_blocking(move || {
         let id = env_id.unwrap_or_default();
-        usage::collect_at(env::projects_dir_for(&id), session_start_ms)
+        let data = usage::collect_at(env::projects_dir_for(&id), session_start_ms, week_start_ms);
+        // Remember it for the iTerm2 panel.
+        app.state::<hub::Hub>().store_usage(&id, &data, now_ms());
+        data
     })
     .await
     .unwrap_or_default()
@@ -72,9 +83,22 @@ fn get_account(env_id: Option<String>) -> account::Account {
 
 /// Fetch authoritative usage limits from Anthropic for a given environment
 /// (the same data the Claude app shows). Token is used at runtime only.
+///
+/// This is the one poller: the environment asked about becomes the one the
+/// iTerm2 panel shows, and results are shared with the panel through the hub.
+/// A successful fetch from moments ago is reused rather than spending another
+/// request of the endpoint's one-per-2-minutes budget.
 #[tauri::command]
-async fn get_real_usage(env_id: Option<String>) -> realusage::RealUsage {
-    realusage::fetch(&env_id.unwrap_or_default()).await
+async fn get_real_usage(app: tauri::AppHandle, env_id: Option<String>) -> realusage::RealUsage {
+    let id = env_id.unwrap_or_default();
+    let hub = app.state::<hub::Hub>();
+    hub.set_env(&id);
+    if let Some(v) = hub.reusable_api(&id, now_ms()) {
+        return v;
+    }
+    let v = realusage::fetch(&id).await;
+    hub.store_real(&id, &v, now_ms());
+    v
 }
 
 /// Set whether the widget is pinned. The window floats above others whenever
@@ -104,6 +128,7 @@ pub fn run() {
             None,
         ))
         .manage(TrayState::default())
+        .manage(hub::Hub::default())
         .setup(|app| {
             // macOS: run as an "accessory" — no Dock icon and no app menu, so the
             // widget lives only in the menu bar. The tray keeps it reachable.
@@ -114,6 +139,8 @@ pub fn run() {
             // Default to the light backdrop; the frontend re-applies the saved theme.
             apply_window_effects(&window, false);
             create_tray(app.handle())?;
+            // Serve the iTerm2 toolbelt panel (see integrations/iterm2/).
+            panel::start(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| match event {

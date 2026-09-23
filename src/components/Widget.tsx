@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icon";
-import { Overview, type Forecast, type WeeklyRow } from "./Overview";
+import { Overview, type WeeklyRow } from "./Overview";
 import { Limits } from "./Limits";
 import { Sessions } from "./Sessions";
-import { fmtTokens, fmtForecast, fmtResetRelative, fmtResetAbsolute } from "../lib/format";
+import { fmtTokens, fmtResetRelative, fmtResetAbsolute } from "../lib/format";
+import { allModelsBucket, sessionPace, weeklyPace } from "../lib/pace";
 import type { Account, Attribution, RealUsage, UsageData } from "../lib/types";
 import { computeEconomics, type PlanDef } from "../lib/plans";
 
@@ -146,55 +147,9 @@ export function Widget({
       }))
     : [];
 
-  // ── Burn + forecast, all in the session window's frame of reference. ──
-  // The local burn bins are indexed from the window start (live reset − 5h when
-  // known). Utilization per token is calibrated from the window's own totals
-  // (live % ÷ tokens logged in the window), so the pace of the last 30 minutes
-  // can be projected in % terms. Falls back to the whole-window average pace
-  // when the window isn't live-aligned or has too little data to calibrate.
-  const BIN_MS = 15 * 60_000;
-  const burnBins = data.burn.length || 20;
-  const burnNow = Math.min(burnBins, Math.max(0, (now - data.session.startedAt) / BIN_MS));
-  let burnSafe = 0; // safe tokens per bin (0 = unknown)
-  let forecast: Forecast | undefined;
-  if (live && !sessionExpired && Number.isFinite(sessionResetT)) {
-    const resetT = sessionResetT;
-    const sessionStart = resetT - 5 * 3600 * 1000;
-    const elapsed = Math.max(60_000, now - sessionStart);
-    const remaining = Math.max(0, resetT - now);
-    const u = real.session!.utilization;
-
-    let ratePerMs: number; // utilization per ms
-    let basis: Forecast["basis"];
-    const calibratable = data.session.fromLive && data.session.tokens >= 20_000 && u >= 0.02;
-    if (calibratable) {
-      const uPerToken = u / data.session.tokens;
-      const nowIdx = Math.min(burnBins - 1, Math.floor(burnNow));
-      const fromIdx = Math.max(0, nowIdx - 1); // previous bin + current partial bin ≈ last 30 min
-      const recentTokens = data.burn.slice(fromIdx, nowIdx + 1).reduce((a, b) => a + b, 0);
-      const recentMs = Math.max(60_000, now - (data.session.startedAt + fromIdx * BIN_MS));
-      ratePerMs = (recentTokens / recentMs) * uPerToken;
-      basis = "recent";
-      burnSafe = u < 1 ? (1 - u) / uPerToken / Math.max(1, remaining / BIN_MS) : 0;
-    } else {
-      ratePerMs = u / elapsed;
-      basis = "average";
-    }
-
-    if (u >= 1) {
-      forecast = { basis, willBust: true, label: fmtForecast(0), projectedPct: 100 };
-    } else if (ratePerMs <= 0) {
-      forecast = { basis: "idle", willBust: false, label: "", projectedPct: Math.round(u * 100) };
-    } else {
-      const msToFull = (1 - u) / ratePerMs;
-      forecast = {
-        basis,
-        willBust: msToFull < remaining,
-        label: fmtForecast(msToFull / 60000),
-        projectedPct: Math.round(Math.min(1, u + ratePerMs * remaining) * 100),
-      };
-    }
-  }
+  // ── Paces: the session's last 30 minutes, and the week's last day. ──
+  const { forecast, burnSafe, burnNow } = sessionPace(real, data, now);
+  const weekly = weeklyPace(allModelsBucket(real), data.week, now);
 
   // Economics: real-data-driven. Extra usage is the authoritative dollar figure
   // from the API when available; the helper returns 0 / no projection otherwise.
@@ -300,6 +255,7 @@ export function Widget({
             unavailableReason={real.reason}
             weeklyRows={weeklyRows}
             forecast={forecast}
+            weeklyPace={weekly}
             models={data.models}
             sessionFromLive={data.session.fromLive}
             burn={data.burn}

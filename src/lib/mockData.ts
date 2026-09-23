@@ -27,6 +27,7 @@ export function mockUsage(): UsageData {
       { id: "haiku", name: "Haiku", tokens: 184_000, cost: 0.29, prompts: 46 },
     ],
     // tokens per 15-min bin from the session start (3h12m in → ~13 bins elapsed)
+    week: { startedAt: now - 3 * 86_400_000, fromLive: false, cost: 214.3, cost24h: 71.2 },
     burn: [61e3, 88e3, 74e3, 132e3, 190e3, 221e3, 175e3, 288e3, 342e3, 296e3, 231e3, 372e3, 160e3, 0, 0, 0, 0, 0, 0, 0],
   };
 }

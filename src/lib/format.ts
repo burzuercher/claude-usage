@@ -50,3 +50,17 @@ export const fmtAgo = (ts: number, now: number): string => {
   if (ms < 86_400_000) return `${fmtDuration(ms)} ago`;
   return `${Math.floor(ms / 86_400_000)}d ago`;
 };
+
+/** 0..1 share → "14%", with "<1%" for a non-zero sliver. */
+export const fmtPct = (share: number): string => {
+  if (!Number.isFinite(share) || share <= 0) return "0%";
+  const pct = share * 100;
+  return pct < 1 ? "<1%" : `${Math.round(pct)}%`;
+};
+
+/** "2d 4h" for spans of a day or more, else "5h 12m" / "12m". */
+export const fmtSpan = (ms: number): string => {
+  if (ms < 86_400_000) return fmtDuration(ms);
+  const h = Math.floor(ms / 3_600_000);
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+};
